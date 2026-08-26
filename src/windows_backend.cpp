@@ -147,7 +147,6 @@ private:
             ::BCryptHashData(hash, buffer.data(), got, 0);
         }
         ::CloseHandle(file);
-        DWORD cb = 0;
         ::BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0);
         ::BCryptDestroyHash(hash);
         ::BCryptCloseAlgorithmProvider(alg, 0);

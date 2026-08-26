@@ -16,7 +16,10 @@ jobs:
           # x64 MSVC via the ilammy/msvc-dev-cmd action, which downloads
           # and sets up the Visual Studio Build Tools on the hosted
           # runner (the windows-latest image no longer ships with VS
-          # preinstalled).
+          # preinstalled). The action's `arch` parameter puts the
+          # matching cl.exe first in PATH, so we don't need to pass
+          # -A or -DCMAKE_GENERATOR_PLATFORM to cmake (Ninja is
+          # single-config and rejects both).
           - name: windows-x64-msvc
             os: windows-latest
             arch: x64
@@ -32,7 +35,6 @@ jobs:
             arch: x86
             setup: msvc
             cxx: cl
-            extra_cmake: -DCMAKE_GENERATOR_PLATFORM=Win32
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -59,7 +61,6 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release ^
             -DCMAKE_C_COMPILER=${{ matrix.cxx }} ^
             -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ^
-            ${{ matrix.extra_cmake }} ^
             -DGTLIBCPP_BUILD_TESTS=ON ^
             -DGTLIBCPP_BUILD_DEMOS=OFF
 

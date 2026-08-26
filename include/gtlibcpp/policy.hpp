@@ -94,7 +94,10 @@ public:
     [[nodiscard]] const std::string& reason() const noexcept;
 
 private:
-    std::atomic_flag engaged_{};
+    // Use std::atomic<bool> rather than std::atomic_flag for portability
+    // with C++17: std::atomic_flag::test() is a C++20 extension and is
+    // not available on MSVC or clang-cl in C++17 mode.
+    std::atomic<bool> engaged_{false};
     std::string reason_{};
 };
 
