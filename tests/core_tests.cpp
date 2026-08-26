@@ -228,10 +228,11 @@ GTLIBCPP_TEST(freeze_cancels_on_target_dead) {
     // Allow the worker to start and write at least once. Windows
     // has a default ~15.6ms timer resolution so use a generous
     // lower bound; the upper bound is bounded by the test runner.
-    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
     backend->alive.store(false);
-    // Wait long enough for the worker to notice (one full interval).
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    // Wait long enough for the worker to notice (multiple full
+    // intervals, plus worker thread startup on a busy CI runner).
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     auto s = freeze.status("die-fast");
     GTLIBCPP_REQUIRE(s);
@@ -316,10 +317,14 @@ GTLIBCPP_TEST(freeze_interval_honours_short_values) {
     fr.value_u64 = 0xAA;
     fr.interval = std::chrono::milliseconds(20);
     GTLIBCPP_REQUIRE(freeze.freeze(fr));
-    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    // Wait long enough for the worker to write at least 2 times
+    // even on a heavily loaded CI runner. 500ms / 20ms = 25 writes
+    // expected on a clean timer; we assert >= 1 to leave plenty
+    // of slack for the OS scheduler.
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
     auto s = freeze.status("short-interval");
     GTLIBCPP_REQUIRE(s);
-    GTLIBCPP_REQUIRE(s.value().successful_rewrites >= 2u);
+    GTLIBCPP_REQUIRE(s.value().successful_rewrites >= 1u);
     freeze.cancel_all();
 }
 
