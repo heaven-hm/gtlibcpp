@@ -6,4 +6,16 @@
 /IGITrainer.exe
 /IGITrainer.o
 /build
+/build-*
 /igi_window.lnk
+/.worktrees/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!cmake/*.cmake.in
+compile_commands.json
+package/
+*.zip
+*.tar.*
