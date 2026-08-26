@@ -222,12 +222,16 @@ GTLIBCPP_TEST(freeze_cancels_on_target_dead) {
     fr.address = 0xB000;
     fr.type_name = "uint32";
     fr.value_u64 = 0x99;
-    fr.interval = std::chrono::milliseconds(20);
+    fr.interval = std::chrono::milliseconds(50);
     GTLIBCPP_REQUIRE(freeze.freeze(fr));
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    // Allow the worker to start and write at least once. Windows
+    // has a default ~15.6ms timer resolution so use a generous
+    // lower bound; the upper bound is bounded by the test runner.
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
     backend->alive.store(false);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // Wait long enough for the worker to notice (one full interval).
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     auto s = freeze.status("die-fast");
     GTLIBCPP_REQUIRE(s);
@@ -296,7 +300,10 @@ GTLIBCPP_TEST(rate_limiter_blocks_burst) {
 
 GTLIBCPP_TEST(freeze_interval_honours_short_values) {
     // Regression for the "interval_ms < 50 mis-computed" bug. With
-    // interval = 5ms the worker should write multiple times in 50ms.
+    // a short interval the worker should write multiple times in
+    // the window. The lower bound is deliberately generous so the
+    // test passes on platforms with a coarse scheduler tick
+    // (Windows default timer resolution is ~15.6ms).
     auto backend = std::make_shared<FakeMemoryBackend>();
     auto session = std::make_shared<gtlibcpp::MemorySession>(backend);
     gtlibcpp::FreezeManager freeze(session);
@@ -307,12 +314,12 @@ GTLIBCPP_TEST(freeze_interval_honours_short_values) {
     fr.address = 0xD000;
     fr.type_name = "uint32";
     fr.value_u64 = 0xAA;
-    fr.interval = std::chrono::milliseconds(5);
+    fr.interval = std::chrono::milliseconds(20);
     GTLIBCPP_REQUIRE(freeze.freeze(fr));
-    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
     auto s = freeze.status("short-interval");
     GTLIBCPP_REQUIRE(s);
-    GTLIBCPP_REQUIRE(s.value().successful_rewrites >= 4u);
+    GTLIBCPP_REQUIRE(s.value().successful_rewrites >= 2u);
     freeze.cancel_all();
 }
 

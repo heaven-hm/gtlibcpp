@@ -23,35 +23,33 @@ jobs:
           - name: windows-x64-msvc
             os: windows-latest
             arch: x64
-            setup: msvc
             cxx: cl
+            cxx_compiler: cl.exe
           - name: windows-x64-clang-cl
             os: windows-latest
             arch: x64
-            setup: clang
             cxx: clang-cl
+            # Use the bundled clang-cl shipped with the VS install; the
+            # standalone LLVM 18 from aminya/setup-cpp lacks the MSVC
+            # STL headers that the standard library requires.
+            cxx_compiler: clang-cl.exe
           - name: windows-x86-msvc
             os: windows-latest
             arch: x86
-            setup: msvc
             cxx: cl
+            cxx_compiler: cl.exe
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up MSVC (Visual Studio Build Tools 2022)
-        if: matrix.setup == 'msvc'
+      - name: Set up MSVC dev cmd (cl + clang-cl)
+        # The ilammy action exposes both cl.exe and the bundled
+        # clang-cl.exe under $VSINSTALLDIR\VC\Tools\Llvm\<arch>\bin.
+        # We pick one or the other per job via CMAKE_C_COMPILER.
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.arch }}
-
-      - name: Set up clang-cl (LLVM 18)
-        if: matrix.setup == 'clang'
-        uses: aminya/setup-cpp@v1
-        with:
-          compiler: clang
-          clang: 18
 
       - name: Configure (Ninja, ${{ matrix.cxx }}, ${{ matrix.arch }})
         shell: cmd
@@ -59,8 +57,8 @@ jobs:
           cmake -S . -B build ^
             -G "Ninja" ^
             -DCMAKE_BUILD_TYPE=Release ^
-            -DCMAKE_C_COMPILER=${{ matrix.cxx }} ^
-            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ^
+            -DCMAKE_C_COMPILER=${{ matrix.cxx_compiler }} ^
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx_compiler }} ^
             -DGTLIBCPP_BUILD_TESTS=ON ^
             -DGTLIBCPP_BUILD_DEMOS=OFF
 
