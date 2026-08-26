@@ -562,13 +562,11 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
         auto section = find_child(child, "Section");
         if (section) entry.section = section->text;
         const XmlNode* variable = find_child(child, "Variable");
-        if (!variable) {
-            entry.failure_reason = "missing <Variable>";
-            table.unsupported_entries.push_back(entry);
-            table.diagnostics.push_back(
-                "entry " + entry.id.value + " has no <Variable> child");
-            continue;
-        }
+        // Some CE 7.x tables put <VariableType> and <Address> as direct
+        // children of <CheatEntry>, not wrapped in <Variable>. The
+        // parser supports both shapes; the variable pointer is whichever
+        // child the address / type / offsets come from.
+        if (!variable) variable = &child;
         auto addr = variable->attrs.find("Address");
         if (addr != variable->attrs.end() && !addr->second.empty()) {
             std::int64_t v = 0;
@@ -577,7 +575,17 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
         if (entry.address == 0) {
             if (const auto* addr_node = find_child(variable, "Address")) {
                 std::int64_t v = 0;
-                if (parse_int64(addr_node->text, v)) entry.address = static_cast<Address>(v);
+                if (parse_int64(addr_node->text, v)) {
+                    entry.address = static_cast<Address>(v);
+                } else if (auto& text = const_cast<std::string&>(addr_node->text);
+                           !text.empty() && text.front() == '"') {
+                    // Source expression like "IGI.exe"+0x139560. The
+                    // base resolution is out of scope for this issue;
+                    // record the raw expression in the diagnostics.
+                    table.diagnostics.push_back(
+                        "entry " + entry.id.value +
+                        " has a symbolic address expression: " + text);
+                }
             }
         }
         const XmlNode* offsets_node = find_child(variable, "Offsets");
@@ -594,6 +602,8 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
         }
         const XmlNode* type_node = find_child(variable, "Type");
         std::string type_text = type_node ? type_node->text : std::string{};
+        const XmlNode* type_node2 = find_child(child, "VariableType");
+        if (type_node2 && !type_node2->text.empty()) type_text = type_node2->text;
         const XmlNode* display = find_child(variable, "DisplayAs");
         if (display) type_text = display->text;
         bool is_signed = false;
@@ -609,6 +619,14 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
         entry.is_signed = is_signed;
         const XmlNode* value_node = find_child(variable, "Value");
         if (value_node) entry.default_value_text = value_node->text;
+        const XmlNode* last_state = find_child(child, "LastState");
+        if (last_state) {
+            if (auto* v = const_cast<std::string*>(&entry.default_value_text);
+                v->empty()) {
+                auto it = last_state->attrs.find("Value");
+                if (it != last_state->attrs.end()) *v = it->second;
+            }
+        }
 
         if (find_child(child, "AssemblerScript")
             || find_child(child, "AutoAssembler")
