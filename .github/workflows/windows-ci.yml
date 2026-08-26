@@ -8,42 +8,58 @@ on:
 
 jobs:
   build:
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          # x64 MSVC via the ilammy/msvc-dev-cmd action, which downloads
+          # and sets up the Visual Studio Build Tools on the hosted
+          # runner (the windows-latest image no longer ships with VS
+          # preinstalled).
+          - name: windows-x64-msvc
+            os: windows-latest
             arch: x64
-            generator: "Visual Studio 17 2022"
-            triplet: x64
-            cxx: "cl"
-          - os: windows-latest
-            arch: Win32
-            generator: "Visual Studio 17 2022"
-            triplet: x86
-            cxx: "cl"
-          - os: windows-latest
+            setup: msvc
+            cxx: cl
+          - name: windows-x64-clang-cl
+            os: windows-latest
             arch: x64
-            generator: "Ninja"
-            triplet: x64
-            cxx: "clang-cl"
-          - os: windows-latest
-            arch: Win32
-            generator: "Ninja"
-            triplet: x86
-            cxx: "clang-cl"
+            setup: clang
+            cxx: clang-cl
+          - name: windows-x86-msvc
+            os: windows-latest
+            arch: x86
+            setup: msvc
+            cxx: cl
+            extra_cmake: -DCMAKE_GENERATOR_PLATFORM=Win32
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure
+      - name: Set up MSVC (Visual Studio Build Tools 2022)
+        if: matrix.setup == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+
+      - name: Set up clang-cl (LLVM 18)
+        if: matrix.setup == 'clang'
+        uses: aminya/setup-cpp@v1
+        with:
+          compiler: clang
+          clang-version: "18"
+
+      - name: Configure (Ninja, ${{ matrix.cxx }}, ${{ matrix.arch }})
         shell: cmd
         run: |
           cmake -S . -B build ^
-            -G "${{ matrix.generator }}" ^
-            -A ${{ matrix.triplet }} ^
+            -G "Ninja" ^
             -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_C_COMPILER=${{ matrix.cxx }} ^
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} ^
+            ${{ matrix.extra_cmake }} ^
             -DGTLIBCPP_BUILD_TESTS=ON ^
             -DGTLIBCPP_BUILD_DEMOS=OFF
 
@@ -51,22 +67,22 @@ jobs:
         shell: cmd
         run: cmake --build build --config Release --parallel
 
-      - name: Test
+      - name: Test (ctest)
         shell: cmd
         run: |
           cd build
           ctest -C Release --output-on-failure
 
-      - name: Install package
+      - name: Install + package
+        if: matrix.arch == 'x64' && matrix.cxx == 'cl'
         shell: cmd
         run: |
           cmake --install build --config Release --prefix package
           7z a gtlibcpp-${{ matrix.arch }}.zip package
-        if: matrix.cxx == 'cl' && matrix.arch == 'x64'
 
       - name: Upload artifact
+        if: matrix.arch == 'x64' && matrix.cxx == 'cl'
         uses: actions/upload-artifact@v4
         with:
           name: gtlibcpp-${{ matrix.arch }}
           path: gtlibcpp-${{ matrix.arch }}.zip
-        if: matrix.cxx == 'cl' && matrix.arch == 'x64'
