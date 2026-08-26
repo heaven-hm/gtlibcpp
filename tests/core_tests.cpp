@@ -225,14 +225,15 @@ GTLIBCPP_TEST(freeze_cancels_on_target_dead) {
     fr.interval = std::chrono::milliseconds(50);
     GTLIBCPP_REQUIRE(freeze.freeze(fr));
 
-    // Allow the worker to start and write at least once. Windows
-    // has a default ~15.6ms timer resolution so use a generous
-    // lower bound; the upper bound is bounded by the test runner.
-    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    // Give the worker plenty of time to come up and observe
+    // is_alive() == true. The x86 Windows CI runner has a
+    // coarse timer resolution (~15.6 ms) and the worker thread
+    // takes longer to start there; 1 second is overkill on a
+    // modern POSIX box but a safe upper bound for any CI host.
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     backend->alive.store(false);
-    // Wait long enough for the worker to notice (multiple full
-    // intervals, plus worker thread startup on a busy CI runner).
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // Multiple full intervals, plus margin for thread startup.
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     auto s = freeze.status("die-fast");
     GTLIBCPP_REQUIRE(s);
@@ -302,9 +303,8 @@ GTLIBCPP_TEST(rate_limiter_blocks_burst) {
 GTLIBCPP_TEST(freeze_interval_honours_short_values) {
     // Regression for the "interval_ms < 50 mis-computed" bug. With
     // a short interval the worker should write multiple times in
-    // the window. The lower bound is deliberately generous so the
-    // test passes on platforms with a coarse scheduler tick
-    // (Windows default timer resolution is ~15.6ms).
+    // the window. The wait is deliberately long so the test passes
+    // on Windows x86 CI runners (coarse timer + slow thread start).
     auto backend = std::make_shared<FakeMemoryBackend>();
     auto session = std::make_shared<gtlibcpp::MemorySession>(backend);
     gtlibcpp::FreezeManager freeze(session);
@@ -317,11 +317,10 @@ GTLIBCPP_TEST(freeze_interval_honours_short_values) {
     fr.value_u64 = 0xAA;
     fr.interval = std::chrono::milliseconds(20);
     GTLIBCPP_REQUIRE(freeze.freeze(fr));
-    // Wait long enough for the worker to write at least 2 times
-    // even on a heavily loaded CI runner. 500ms / 20ms = 25 writes
-    // expected on a clean timer; we assert >= 1 to leave plenty
-    // of slack for the OS scheduler.
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // 1000 ms / 20 ms = ~50 writes expected on a clean timer.
+    // We assert >= 1 to leave plenty of slack; the prior bug
+    // (interval_ms < 50 silently mis-computed) yielded 0 writes.
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     auto s = freeze.status("short-interval");
     GTLIBCPP_REQUIRE(s);
     GTLIBCPP_REQUIRE(s.value().successful_rewrites >= 1u);
