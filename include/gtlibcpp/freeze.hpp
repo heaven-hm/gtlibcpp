@@ -33,7 +33,7 @@ struct FreezeStatus {
     std::uint64_t value_u64{0};
     std::size_t  successful_rewrites{0};
     std::size_t  failed_rewrites{0};
-    std::size_t  original_value_u64{0};
+    std::uint64_t original_value_u64{0};
     bool         active{false};
     bool         restored{false};
     std::string  last_error{};

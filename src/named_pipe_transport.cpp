@@ -156,8 +156,8 @@ make_named_pipe_server(const NamedPipeServerOptions& options) {
 
 class NamedPipeClient final : public IAgentTransport {
 public:
-    explicit NamedPipeClient(std::string pipe_path, std::uint32_t buffer_size)
-        : pipe_path_(std::move(pipe_path)), buffer_size_(buffer_size) {}
+    explicit NamedPipeClient(std::string pipe_path, std::uint32_t /*buffer_size*/)
+        : pipe_path_(std::move(pipe_path)) {}
     ~NamedPipeClient() override { close(); }
 
     NamedPipeClient(const NamedPipeClient&) = delete;
@@ -252,7 +252,6 @@ private:
     }
 
     std::string pipe_path_;
-    std::uint32_t buffer_size_;
     HANDLE pipe_{INVALID_HANDLE_VALUE};
     bool closed_{false};
 };

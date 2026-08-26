@@ -51,7 +51,7 @@ jobs:
         uses: aminya/setup-cpp@v1
         with:
           compiler: clang
-          clang-version: "18"
+          clang: 18
 
       - name: Configure (Ninja, ${{ matrix.cxx }}, ${{ matrix.arch }})
         shell: cmd
