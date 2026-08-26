@@ -17,6 +17,8 @@
  */
 #pragma once
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -142,17 +144,33 @@ public:
 
     [[nodiscard]] const T& value() const& {
         if (!has_value_) {
-            static const T empty{};
-            return empty;
+            std::fputs("gtlibcpp::Result::value() called on error\n", stderr);
+            std::abort();
         }
         return std::get<T>(storage_);
     }
     [[nodiscard]] T&& value() && {
         if (!has_value_) {
-            static T empty{};
-            return std::move(empty);
+            std::fputs("gtlibcpp::Result::value() called on error\n", stderr);
+            std::abort();
         }
         return std::move(std::get<T>(storage_));
+    }
+    [[nodiscard]] T value_or(T fallback) const& {
+        if (!has_value_) return fallback;
+        return std::get<T>(storage_);
+    }
+    [[nodiscard]] T value_or(T fallback) && {
+        if (!has_value_) return fallback;
+        return std::move(std::get<T>(storage_));
+    }
+    [[nodiscard]] const T& expect(const char* msg) const& {
+        if (!has_value_) {
+            std::fprintf(stderr, "gtlibcpp::Result::expect: %s\n",
+                         msg ? msg : "(no message)");
+            std::abort();
+        }
+        return std::get<T>(storage_);
     }
     [[nodiscard]] const Error& error() const& {
         static const Error none{};

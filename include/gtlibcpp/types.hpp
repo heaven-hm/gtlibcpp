@@ -5,6 +5,14 @@
 
 namespace gtlibcpp {
 
+// Process-architecture type. The legacy code used WORD with IsWow64, but
+// never recorded the actual target arch; we make it explicit because the
+// pointer size depends on it. The library supports both 32-bit and
+// 64-bit games: `x86` covers the legacy Win32 trainers, and `x64`
+// covers the modern x64 process. `Architecture` is recorded at attach
+// time, carried in the `TargetIdentity`, and used by the agent service
+// to pick the correct pointer width for pointer-chain resolution and
+// the correct value-encoding for typed read/write/verify.
 enum class Architecture : std::uint8_t {
     unknown = 0,
     x86     = 1,

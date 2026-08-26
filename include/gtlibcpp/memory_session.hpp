@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "backend.hpp"
+#include "log.hpp"
 #include "result.hpp"
 #include "types.hpp"
 
@@ -78,24 +79,41 @@ public:
                       "MemorySession::read<T> requires a trivially copyable type");
         static_assert(!std::is_pointer_v<T>,
                       "Read raw pointers via read<std::uintptr_t>");
-        const std::size_t size = sizeof(T);
-        const auto validated = validate_read_request(address, size);
-        if (!validated) {
-            return Result<T>::failure(validated.error());
-        }
-        auto raw = backend_->read(address, size);
-        if (!raw) {
-            return Result<T>::failure(raw.error());
-        }
-        if (raw.value().size() != size) {
+        try {
+            const std::size_t size = sizeof(T);
+            const auto validated = validate_read_request(address, size);
+            if (!validated) {
+                Logger::instance().warn("MemorySession::read", "validation failed",
+                                        validated.error().code, address, size);
+                return Result<T>::failure(validated.error());
+            }
+            auto raw = backend_->read(address, size);
+            if (!raw) {
+                Logger::instance().warn("MemorySession::read", "backend returned failure",
+                                        raw.error().code, address, size);
+                return Result<T>::failure(raw.error());
+            }
+            if (raw.value().size() != size) {
+                return Result<T>::failure(make_error(
+                    ErrorCode::partial_read,
+                    "read returned fewer bytes than requested",
+                    "MemorySession::read", address, raw.value().size()));
+            }
+            T value{};
+            std::memcpy(&value, raw.value().data(), size);
+            Logger::instance().debug("MemorySession::read", "ok", address, size);
+            return Result<T>::success(value);
+        } catch (const std::exception& e) {
+            Logger::instance().error("MemorySession::read", e.what(),
+                                     ErrorCode::internal, address);
             return Result<T>::failure(make_error(
-                ErrorCode::partial_read,
-                "read returned fewer bytes than requested",
-                "MemorySession::read", address, raw.value().size()));
+                ErrorCode::internal, e.what(), "MemorySession::read", address));
+        } catch (...) {
+            Logger::instance().error("MemorySession::read", "unknown exception",
+                                     ErrorCode::internal, address);
+            return Result<T>::failure(make_error(
+                ErrorCode::internal, "unknown exception", "MemorySession::read", address));
         }
-        T value{};
-        std::memcpy(&value, raw.value().data(), size);
-        return Result<T>::success(value);
     }
 
     [[nodiscard]] Result<std::vector<std::uint8_t>>
@@ -107,14 +125,33 @@ public:
                       "MemorySession::write<T> requires a trivially copyable type");
         static_assert(!std::is_pointer_v<T>,
                       "Write raw pointers via write<std::uintptr_t>");
-        const std::size_t size = sizeof(T);
-        const auto validated = validate_write_request(address, size);
-        if (!validated) {
-            return Result<std::size_t>::failure(validated.error());
+        try {
+            const std::size_t size = sizeof(T);
+            const auto validated = validate_write_request(address, size);
+            if (!validated) {
+                Logger::instance().warn("MemorySession::write", "validation failed",
+                                        validated.error().code, address, size);
+                return Result<std::size_t>::failure(validated.error());
+            }
+            std::vector<std::uint8_t> bytes(size);
+            std::memcpy(bytes.data(), &value, size);
+            auto w = write_bytes(address, bytes);
+            if (!w) {
+                Logger::instance().warn("MemorySession::write", "write_bytes failed",
+                                        w.error().code, address, size);
+            }
+            return w;
+        } catch (const std::exception& e) {
+            Logger::instance().error("MemorySession::write", e.what(),
+                                     ErrorCode::internal, address);
+            return Result<std::size_t>::failure(make_error(
+                ErrorCode::internal, e.what(), "MemorySession::write", address));
+        } catch (...) {
+            Logger::instance().error("MemorySession::write", "unknown exception",
+                                     ErrorCode::internal, address);
+            return Result<std::size_t>::failure(make_error(
+                ErrorCode::internal, "unknown exception", "MemorySession::write", address));
         }
-        std::vector<std::uint8_t> bytes(size);
-        std::memcpy(bytes.data(), &value, size);
-        return write_bytes(address, bytes);
     }
 
     [[nodiscard]] Result<std::size_t>
@@ -252,28 +289,63 @@ inline MemorySession::MemorySession(MemoryBackendPtr backend)
 
 inline Result<std::vector<std::uint8_t>>
 MemorySession::read_bytes(Address address, std::size_t size) {
-    const auto validated = validate_read_request(address, size);
-    if (!validated) {
-        return Result<std::vector<std::uint8_t>>::failure(validated.error());
-    }
-    auto raw = backend_->read(address, size);
-    if (!raw) return raw;
-    if (raw.value().size() != size) {
+    try {
+        const auto validated = validate_read_request(address, size);
+        if (!validated) {
+            Logger::instance().warn("MemorySession::read_bytes", "validation failed",
+                                    validated.error().code, address, size);
+            return Result<std::vector<std::uint8_t>>::failure(validated.error());
+        }
+        auto raw = backend_->read(address, size);
+        if (!raw) {
+            Logger::instance().warn("MemorySession::read_bytes", "backend failed",
+                                    raw.error().code, address, size);
+            return raw;
+        }
+        if (raw.value().size() != size) {
+            return Result<std::vector<std::uint8_t>>::failure(make_error(
+                ErrorCode::partial_read,
+                "read returned fewer bytes than requested",
+                "MemorySession::read_bytes", address, raw.value().size()));
+        }
+        return raw;
+    } catch (const std::exception& e) {
+        Logger::instance().error("MemorySession::read_bytes", e.what(),
+                                 ErrorCode::internal, address, size);
         return Result<std::vector<std::uint8_t>>::failure(make_error(
-            ErrorCode::partial_read,
-            "read returned fewer bytes than requested",
-            "MemorySession::read_bytes", address, raw.value().size()));
+            ErrorCode::internal, e.what(), "MemorySession::read_bytes", address, size));
+    } catch (...) {
+        Logger::instance().error("MemorySession::read_bytes", "unknown exception",
+                                 ErrorCode::internal, address, size);
+        return Result<std::vector<std::uint8_t>>::failure(make_error(
+            ErrorCode::internal, "unknown exception",
+            "MemorySession::read_bytes", address, size));
     }
-    return raw;
 }
 
 inline Result<std::size_t>
 MemorySession::write_bytes(Address address, const std::vector<std::uint8_t>& bytes) {
-    const auto validated = validate_write_request(address, bytes.size());
-    if (!validated) {
-        return Result<std::size_t>::failure(validated.error());
+    try {
+        const auto validated = validate_write_request(address, bytes.size());
+        if (!validated) {
+            Logger::instance().warn("MemorySession::write_bytes", "validation failed",
+                                    validated.error().code, address, bytes.size());
+            return Result<std::size_t>::failure(validated.error());
+        }
+        return backend_->write(address, bytes);
+    } catch (const std::exception& e) {
+        Logger::instance().error("MemorySession::write_bytes", e.what(),
+                                 ErrorCode::internal, address, bytes.size());
+        return Result<std::size_t>::failure(make_error(
+            ErrorCode::internal, e.what(), "MemorySession::write_bytes",
+            address, bytes.size()));
+    } catch (...) {
+        Logger::instance().error("MemorySession::write_bytes", "unknown exception",
+                                 ErrorCode::internal, address, bytes.size());
+        return Result<std::size_t>::failure(make_error(
+            ErrorCode::internal, "unknown exception",
+            "MemorySession::write_bytes", address, bytes.size()));
     }
-    return backend_->write(address, bytes);
 }
 
 inline Result<Address>

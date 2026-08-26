@@ -1,7 +1,5 @@
 // Agent-service regression tests
-#include <cassert>
 #include <chrono>
-#include <iostream>
 #include <map>
 #include <memory>
 #include <string>
@@ -15,6 +13,7 @@
 #include "gtlibcpp/memory_session.hpp"
 #include "gtlibcpp/parser.hpp"
 #include "gtlibcpp/policy.hpp"
+#include "gtlibcpp_test.hpp"
 
 namespace {
 
@@ -85,163 +84,113 @@ build_service(std::shared_ptr<FakeBackend>& backend) {
     return std::make_shared<gtlibcpp::AgentService>(session, policy, freeze, parser);
 }
 
-void test_inspect_reports_target_identity() {
+} // namespace
+
+GTLIBCPP_TEST(inspect_reports_target_identity) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
     auto r = svc->handle(R"({"jsonrpc":"2.0","id":"1","method":"inspect","params":{}})");
-    assert(r.ok());
+    GTLIBCPP_REQUIRE(r);
     auto j = gtlibcpp::json_decode(r.value());
-    assert(j.ok());
+    GTLIBCPP_REQUIRE(j);
     const auto* result = gtlibcpp::json_get(j.value(), "result");
-    assert(result);
+    GTLIBCPP_REQUIRE(result);
     const auto* target = gtlibcpp::json_get(*result, "target");
-    assert(target);
-    assert(gtlibcpp::json_get_int(*target, "pid") == 4242);
-    assert(gtlibcpp::json_get_string(*target, "image_path") == "C:/fixtures/fixture.exe");
-    std::cout << "test_inspect_reports_target_identity passed\n";
+    GTLIBCPP_REQUIRE(target);
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*target, "pid"), 4242);
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_string(*target, "image_path"),
+                       std::string("C:/fixtures/fixture.exe"));
 }
 
-void test_read_failure_is_returned_not_swallowed() {
+GTLIBCPP_TEST(read_failure_is_returned_not_swallowed) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
     backend->fail_reads = true;
     auto r = svc->handle(R"({"jsonrpc":"2.0","id":"2","method":"read","params":{"address":4096,"size":4}})");
-    assert(r.ok());
+    GTLIBCPP_REQUIRE(r);
     auto j = gtlibcpp::json_decode(r.value());
-    assert(j.ok());
+    GTLIBCPP_REQUIRE(j);
     const auto* err = gtlibcpp::json_get(j.value(), "error");
-    assert(err);
-    assert(gtlibcpp::json_get_int(*err, "code") == static_cast<std::int64_t>(gtlibcpp::ErrorCode::read_failed));
-    std::cout << "test_read_failure_is_returned_not_swallowed passed\n";
+    GTLIBCPP_REQUIRE(err);
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*err, "code"),
+                       static_cast<std::int64_t>(gtlibcpp::ErrorCode::read_failed));
 }
 
-void test_preview_then_apply_round_trip() {
+GTLIBCPP_TEST(preview_then_apply_round_trip) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
     const std::string preview = R"({"jsonrpc":"2.0","id":"3","method":"preview","params":{
-        "request_id":"op-1",
-        "target_alias":"fixture",
-        "capability":"write",
-        "address":4096,
-        "size":4,
-        "expected_current_hash":"abc",
-        "value_repr":"uint32 0x11223344"
-    }})";
+        "request_id":"op-1","target_alias":"fixture","capability":"write",
+        "address":4096,"size":4,"expected_current_hash":"abc",
+        "value_repr":"uint32 0x11223344"}})";
     auto pr = svc->handle(preview);
-    assert(pr.ok());
+    GTLIBCPP_REQUIRE(pr);
     auto pj = gtlibcpp::json_decode(pr.value());
-    assert(pj.ok());
-    const auto* perr = gtlibcpp::json_get(pj.value(), "error");
-    assert(!perr);
+    GTLIBCPP_REQUIRE(pj);
+    GTLIBCPP_REQUIRE(!gtlibcpp::json_get(pj.value(), "error"));
     const std::string apply = R"({"jsonrpc":"2.0","id":"4","method":"apply","params":{
-        "request_id":"op-1",
-        "target_alias":"fixture",
-        "capability":"write",
-        "address":4096,
-        "size":4,
-        "expected_current_hash":"abc",
-        "approved":true,
-        "value_hex":"11223344",
-        "value_repr":"uint32 0x11223344"
-    }})";
+        "request_id":"op-1","target_alias":"fixture","capability":"write",
+        "address":4096,"size":4,"expected_current_hash":"abc","approved":true,
+        "value_hex":"11223344","value_repr":"uint32 0x11223344"}})";
     auto ar = svc->handle(apply);
-    assert(ar.ok());
+    GTLIBCPP_REQUIRE(ar);
     auto aj = gtlibcpp::json_decode(ar.value());
-    assert(aj.ok());
-    const auto* aerr = gtlibcpp::json_get(aj.value(), "error");
-    assert(!aerr);
-    std::cout << "test_preview_then_apply_round_trip passed\n";
+    GTLIBCPP_REQUIRE(aj);
+    GTLIBCPP_REQUIRE(!gtlibcpp::json_get(aj.value(), "error"));
 }
 
-void test_apply_without_preview_is_denied() {
+GTLIBCPP_TEST(apply_without_preview_is_denied) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
     const std::string apply = R"({"jsonrpc":"2.0","id":"5","method":"apply","params":{
-        "request_id":"op-2",
-        "target_alias":"fixture",
-        "capability":"write",
-        "address":4096,
-        "size":4,
-        "expected_current_hash":"abc",
-        "approved":true,
-        "value_hex":"01020304",
-        "value_repr":"uint32 1"
-    }})";
+        "request_id":"op-2","target_alias":"fixture","capability":"write",
+        "address":4096,"size":4,"expected_current_hash":"abc","approved":true,
+        "value_hex":"01020304","value_repr":"uint32 1"}})";
     auto r = svc->handle(apply);
-    assert(r.ok());
+    GTLIBCPP_REQUIRE(r);
     auto j = gtlibcpp::json_decode(r.value());
-    const auto* err = gtlibcpp::json_get(j.value(), "error");
-    assert(err);
-    std::cout << "test_apply_without_preview_is_denied passed\n";
+    GTLIBCPP_REQUIRE(gtlibcpp::json_get(j.value(), "error"));
 }
 
-void test_kill_switch_engages_and_blocks() {
+GTLIBCPP_TEST(kill_switch_engages_and_blocks) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
-    const std::string engage = R"({"jsonrpc":"2.0","id":"6","method":"kill_switch","params":{"engage":true,"reason":"unit test"}})";
-    auto r = svc->handle(engage);
-    assert(r.ok());
+    auto r = svc->handle(R"({"jsonrpc":"2.0","id":"6","method":"kill_switch","params":{"engage":true,"reason":"unit test"}})");
+    GTLIBCPP_REQUIRE(r);
     const std::string apply = R"({"jsonrpc":"2.0","id":"7","method":"apply","params":{
-        "request_id":"op-k",
-        "target_alias":"fixture",
-        "capability":"write",
-        "address":4096,
-        "size":4,
-        "expected_current_hash":"abc",
-        "approved":true,
-        "value_hex":"AABBCCDD",
-        "value_repr":"uint32"
-    }})";
+        "request_id":"op-k","target_alias":"fixture","capability":"write",
+        "address":4096,"size":4,"expected_current_hash":"abc","approved":true,
+        "value_hex":"AABBCCDD","value_repr":"uint32"}})";
     auto denied = svc->handle(apply);
-    assert(denied.ok());
+    GTLIBCPP_REQUIRE(denied);
     auto dj = gtlibcpp::json_decode(denied.value());
-    const auto* err = gtlibcpp::json_get(dj.value(), "error");
-    assert(err);
-    std::cout << "test_kill_switch_engages_and_blocks passed\n";
+    GTLIBCPP_REQUIRE(gtlibcpp::json_get(dj.value(), "error"));
 }
 
-void test_unknown_target_is_denied() {
+GTLIBCPP_TEST(unknown_target_is_denied) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
-    const std::string preview = R"({"jsonrpc":"2.0","id":"8","method":"preview","params":{
-        "request_id":"op-z",
-        "target_alias":"not-listed",
-        "capability":"write",
-        "address":4096,
-        "size":4,
-        "expected_current_hash":"abc",
-        "value_repr":"uint32"
-    }})";
-    auto r = svc->handle(preview);
+    auto r = svc->handle(R"({"jsonrpc":"2.0","id":"8","method":"preview","params":{
+        "request_id":"op-z","target_alias":"not-listed","capability":"write",
+        "address":4096,"size":4,"expected_current_hash":"abc","value_repr":"uint32"}})");
     auto j = gtlibcpp::json_decode(r.value());
-    const auto* err = gtlibcpp::json_get(j.value(), "error");
-    assert(err);
-    std::cout << "test_unknown_target_is_denied passed\n";
+    GTLIBCPP_REQUIRE(gtlibcpp::json_get(j.value(), "error"));
 }
 
-void test_freeze_and_status_round_trip() {
+GTLIBCPP_TEST(freeze_and_status_round_trip) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
-    const std::string freeze = R"({"jsonrpc":"2.0","id":"9","method":"freeze","params":{
-        "id":"freeze-1",
-        "address":8192,
-        "type":"uint32",
-        "value":99,
-        "interval_ms":20
-    }})";
-    auto fr = svc->handle(freeze);
-    assert(fr.ok());
+    auto fr = svc->handle(R"({"jsonrpc":"2.0","id":"9","method":"freeze","params":{
+        "id":"freeze-1","address":8192,"type":"uint32","value":99,"interval_ms":20}})");
+    GTLIBCPP_REQUIRE(fr);
     std::this_thread::sleep_for(std::chrono::milliseconds(80));
-    const std::string status = R"({"jsonrpc":"2.0","id":"10","method":"status","params":{"id":"freeze-1"}})";
-    auto sr = svc->handle(status);
-    assert(sr.ok());
-    const std::string unfreeze = R"({"jsonrpc":"2.0","id":"11","method":"unfreeze","params":{"id":"freeze-1"}})";
-    auto ur = svc->handle(unfreeze);
-    assert(ur.ok());
-    std::cout << "test_freeze_and_status_round_trip passed\n";
+    auto sr = svc->handle(R"({"jsonrpc":"2.0","id":"10","method":"status","params":{"id":"freeze-1"}})");
+    GTLIBCPP_REQUIRE(sr);
+    auto ur = svc->handle(R"({"jsonrpc":"2.0","id":"11","method":"unfreeze","params":{"id":"freeze-1"}})");
+    GTLIBCPP_REQUIRE(ur);
 }
 
-void test_transport_round_trip() {
+GTLIBCPP_TEST(transport_round_trip) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
     auto pair = std::make_shared<gtlibcpp::InProcTransportPair>();
@@ -249,23 +198,35 @@ void test_transport_round_trip() {
     svc->serve(pair->make_server());
     (void)client->send(R"({"jsonrpc":"2.0","id":"1","method":"inspect","params":{}})");
     auto r = client->receive();
-    assert(r.ok());
-    assert(r.value().find("\"result\"") != std::string::npos);
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE(r.value().find("\"result\"") != std::string::npos);
     svc->stop();
-    std::cout << "test_transport_round_trip passed\n";
 }
 
-} // namespace
+GTLIBCPP_TEST(unknown_method_returns_rpc_error) {
+    std::shared_ptr<FakeBackend> backend;
+    auto svc = build_service(backend);
+    auto r = svc->handle(R"({"jsonrpc":"2.0","id":"42","method":"nope","params":{}})");
+    GTLIBCPP_REQUIRE(r);
+    auto j = gtlibcpp::json_decode(r.value());
+    GTLIBCPP_REQUIRE(j);
+    const auto* err = gtlibcpp::json_get(j.value(), "error");
+    GTLIBCPP_REQUIRE(err);
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*err, "code"), -32601);
+}
+
+GTLIBCPP_TEST(malformed_json_returns_parse_error) {
+    std::shared_ptr<FakeBackend> backend;
+    auto svc = build_service(backend);
+    auto r = svc->handle("not json at all");
+    GTLIBCPP_REQUIRE(r);
+    auto j = gtlibcpp::json_decode(r.value());
+    GTLIBCPP_REQUIRE(j);
+    const auto* err = gtlibcpp::json_get(j.value(), "error");
+    GTLIBCPP_REQUIRE(err);
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*err, "code"), -32700);
+}
 
 int main() {
-    test_inspect_reports_target_identity();
-    test_read_failure_is_returned_not_swallowed();
-    test_preview_then_apply_round_trip();
-    test_apply_without_preview_is_denied();
-    test_kill_switch_engages_and_blocks();
-    test_unknown_target_is_denied();
-    test_freeze_and_status_round_trip();
-    test_transport_round_trip();
-    std::cout << "gtlibcpp agent tests: all passed\n";
-    return 0;
+    return GTLIBCPP_RUN_ALL();
 }

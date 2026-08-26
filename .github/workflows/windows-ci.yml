@@ -27,6 +27,11 @@ jobs:
             generator: "Ninja"
             triplet: x64
             cxx: "clang-cl"
+          - os: windows-latest
+            arch: Win32
+            generator: "Ninja"
+            triplet: x86
+            cxx: "clang-cl"
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout

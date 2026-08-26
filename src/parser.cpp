@@ -555,7 +555,14 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
         if (type_node2 && !type_node2->text.empty()) type_text = type_node2->text;
         const XmlNode* display = find_child(variable, "DisplayAs");
         if (display) type_text = display->text;
-        bool is_signed = false;
+        // CE 7.x also uses <ShowAsSigned>0</ShowAsSigned> to override
+        // the default sign of an unsigned type.
+        const XmlNode* show_signed = find_child(child, "ShowAsSigned");
+        if (show_signed) {
+            std::int64_t v = 0;
+            if (parse_int64(show_signed->text, v)) entry.is_signed = (v != 0);
+        }
+        bool is_signed = entry.is_signed;
         auto type_result = parse_variable_type(type_text, is_signed);
         if (!type_result) {
             entry.failure_reason = type_result.error().message;
@@ -575,13 +582,30 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
                 if (it != last_state->attrs.end()) entry.default_value_text = it->second;
             }
         }
+        // CE 7.x carries the previous-saved state on the address as
+        // an attribute (e.g. RealAddress="00539560"). Capture it as a
+        // diagnostic so the agent can offer a "jump to" preview.
+        if (last_state) {
+            auto it = last_state->attrs.find("RealAddress");
+            if (it != last_state->attrs.end()) {
+                std::int64_t v = 0;
+                if (parse_int64(it->second, v)) {
+                    table.diagnostics.push_back(
+                        "entry " + entry.id.value +
+                        " has RealAddress=0x" + it->second);
+                }
+            }
+        }
 
+        // Fail-closed checks for the dangerous CE entry kinds.
         if (find_child(child, "AssemblerScript")
             || find_child(child, "AutoAssembler")
-            || find_child(child, "AA")) {
+            || find_child(child, "AA")
+            || find_child(child, "AAScript")
+            || find_child(child, "LuaScript")) {
             entry.auto_assembler = true;
             entry.failure_reason =
-                "Auto Assembler entries are not supported in this build";
+                "Auto Assembler / Lua entries are not supported in this build";
             table.unsupported_entries.push_back(entry);
             table.diagnostics.push_back(
                 "entry " + entry.id.value + ": Auto Assembler skipped");
@@ -589,7 +613,8 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
         }
         if (find_child(child, "Inject")
             || find_child(child, "LoadLibrary")
-            || find_child(child, "ShellExecute")) {
+            || find_child(child, "ShellExecute")
+            || find_child(child, "DllInjection")) {
             entry.shell_command = true;
             entry.failure_reason = "DLL/shell injection is not supported";
             table.unsupported_entries.push_back(entry);
@@ -597,6 +622,20 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
                 "entry " + entry.id.value + ": shell/inject skipped");
             continue;
         }
+        // CE 7.x supports a raw byte array form (<ByteArray> or
+        // <Bytes><Byte>0x90</Byte>...</Bytes>). The new core only
+        // supports typed reads; raw byte writes are intentionally
+        // out of scope for issue #1 and reported as unsupported.
+        if (find_child(child, "ByteArray")
+            || find_child(child, "Bytes")) {
+            entry.raw_byte_write = true;
+            entry.failure_reason = "raw byte-array writes are not supported";
+            table.unsupported_entries.push_back(entry);
+            table.diagnostics.push_back(
+                "entry " + entry.id.value + ": raw byte-array skipped");
+            continue;
+        }
+
         const XmlNode* hotkeys_node = find_child(child, "Hotkeys");
         if (hotkeys_node) {
             for (const auto& hk : hotkeys_node->children) {
@@ -616,6 +655,21 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
                         entry.hotkey_action = act_node->text;
                     }
                 }
+            }
+        }
+        // CE 7.x can declare a GroupHeader or a Section for menu
+        // organisation. Capture them on the entry for the agent to
+        // surface in its inspect / parse output.
+        const XmlNode* group = find_child(child, "GroupHeader");
+        if (group) {
+            table.diagnostics.push_back(
+                "entry " + entry.id.value + " is a group header: " + group->text);
+        }
+        const XmlNode* color = find_child(child, "Color");
+        if (color) {
+            std::int64_t v = 0;
+            if (parse_int64(color->text, v)) {
+                entry.section = "color:0x" + color->text;
             }
         }
         table.entries.push_back(std::move(entry));

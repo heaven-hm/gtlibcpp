@@ -1,19 +1,17 @@
 // Cheat-table parser regression tests.
-#include <cassert>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 
 #include "gtlibcpp/parser.hpp"
-
-namespace {
+#include "gtlibcpp_test.hpp"
 
 using gtlibcpp::CheatTableParser;
 using gtlibcpp::Result;
 using gtlibcpp::VariableType;
 
-void test_parses_simple_uint_entry() {
+GTLIBCPP_TEST(parses_simple_uint_entry) {
     CheatTableParser parser;
     const std::string xml = R"(<?xml version="1.0" encoding="utf-8"?>
 <CheatTable>
@@ -35,20 +33,19 @@ void test_parses_simple_uint_entry() {
   </CheatEntries>
 </CheatTable>)";
     auto r = parser.parse_string(xml);
-    assert(r.ok());
-    assert(r.value().entries.size() == 1);
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE_EQ(r.value().entries.size(), 1u);
     const auto& e = r.value().entries[0];
-    assert(e.id.value == "id:1");
-    assert(e.description == "Health");
-    assert(e.address == 0x1000);
-    assert(e.type == VariableType::uint32);
-    assert(e.hotkeys.size() == 1);
-    assert(e.hotkeys[0] == 112);
-    assert(r.value().unsupported_entries.empty());
-    std::cout << "test_parses_simple_uint_entry passed\n";
+    GTLIBCPP_REQUIRE_EQ(e.id.value, std::string("id:1"));
+    GTLIBCPP_REQUIRE_EQ(e.description, std::string("Health"));
+    GTLIBCPP_REQUIRE_EQ(e.address, 0x1000u);
+    GTLIBCPP_REQUIRE(e.type == VariableType::uint32);
+    GTLIBCPP_REQUIRE_EQ(e.hotkeys.size(), 1u);
+    GTLIBCPP_REQUIRE_EQ(e.hotkeys[0], 112);
+    GTLIBCPP_REQUIRE(r.value().unsupported_entries.empty());
 }
 
-void test_preserves_multiple_hotkeys() {
+GTLIBCPP_TEST(preserves_multiple_hotkeys) {
     CheatTableParser parser;
     const std::string xml = R"(<?xml version="1.0"?>
 <CheatTable>
@@ -74,16 +71,15 @@ void test_preserves_multiple_hotkeys() {
   </CheatEntries>
 </CheatTable>)";
     auto r = parser.parse_string(xml);
-    assert(r.ok());
-    assert(r.value().entries.size() == 1);
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE_EQ(r.value().entries.size(), 1u);
     const auto& e = r.value().entries[0];
-    assert(e.hotkeys.size() == 2);
-    assert(e.hotkeys[0] == 112);
-    assert(e.hotkeys[1] == 113);
-    std::cout << "test_preserves_multiple_hotkeys passed\n";
+    GTLIBCPP_REQUIRE_EQ(e.hotkeys.size(), 2u);
+    GTLIBCPP_REQUIRE_EQ(e.hotkeys[0], 112);
+    GTLIBCPP_REQUIRE_EQ(e.hotkeys[1], 113);
 }
 
-void test_distinguishes_byte_from_char() {
+GTLIBCPP_TEST(distinguishes_byte_from_char) {
     bool signed_byte = false;
     bool signed_word = false;
     bool signed_qword = false;
@@ -91,14 +87,17 @@ void test_distinguishes_byte_from_char() {
     auto t_char   = CheatTableParser::parse_variable_type("Char", signed_byte);
     auto t_word   = CheatTableParser::parse_variable_type("2 Bytes", signed_word);
     auto t_qword  = CheatTableParser::parse_variable_type("8 Bytes", signed_qword);
-    assert(t_byte.ok());  assert(t_byte.value() == VariableType::uint8);
-    assert(t_char.ok());  assert(t_char.value() == VariableType::int8);
-    assert(t_word.ok());  assert(t_word.value() == VariableType::uint16);
-    assert(t_qword.ok()); assert(t_qword.value() == VariableType::uint64);
-    std::cout << "test_distinguishes_byte_from_char passed\n";
+    GTLIBCPP_REQUIRE(t_byte);
+    GTLIBCPP_REQUIRE(t_byte.value() == VariableType::uint8);
+    GTLIBCPP_REQUIRE(t_char);
+    GTLIBCPP_REQUIRE(t_char.value() == VariableType::int8);
+    GTLIBCPP_REQUIRE(t_word);
+    GTLIBCPP_REQUIRE(t_word.value() == VariableType::uint16);
+    GTLIBCPP_REQUIRE(t_qword);
+    GTLIBCPP_REQUIRE(t_qword.value() == VariableType::uint64);
 }
 
-void test_fails_closed_on_auto_assembler() {
+GTLIBCPP_TEST(fails_closed_on_auto_assembler) {
     CheatTableParser parser;
     const std::string xml = R"(<?xml version="1.0"?>
 <CheatTable>
@@ -115,14 +114,13 @@ label(returnhere)
   </CheatEntries>
 </CheatTable>)";
     auto r = parser.parse_string(xml);
-    assert(r.ok());
-    assert(r.value().entries.empty());
-    assert(r.value().unsupported_entries.size() == 1);
-    assert(!r.value().unsupported_entries[0].failure_reason.empty());
-    std::cout << "test_fails_closed_on_auto_assembler passed\n";
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE(r.value().entries.empty());
+    GTLIBCPP_REQUIRE_EQ(r.value().unsupported_entries.size(), 1u);
+    GTLIBCPP_REQUIRE(!r.value().unsupported_entries[0].failure_reason.empty());
 }
 
-void test_fails_closed_on_loadlibrary() {
+GTLIBCPP_TEST(fails_closed_on_loadlibrary) {
     CheatTableParser parser;
     const std::string xml = R"(<?xml version="1.0"?>
 <CheatTable>
@@ -136,13 +134,52 @@ void test_fails_closed_on_loadlibrary() {
   </CheatEntries>
 </CheatTable>)";
     auto r = parser.parse_string(xml);
-    assert(r.ok());
-    assert(r.value().entries.empty());
-    assert(r.value().unsupported_entries.size() == 1);
-    std::cout << "test_fails_closed_on_loadlibrary passed\n";
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE(r.value().entries.empty());
+    GTLIBCPP_REQUIRE_EQ(r.value().unsupported_entries.size(), 1u);
 }
 
-void test_handles_nested_entries() {
+GTLIBCPP_TEST(fails_closed_on_lua_script) {
+    CheatTableParser parser;
+    const std::string xml = R"(<?xml version="1.0"?>
+<CheatTable>
+  <CheatEntries>
+    <CheatEntry>
+      <ID>11</ID>
+      <Description>Lua</Description>
+      <Variable><Type>4 Bytes</Type><Address>0x100</Address></Variable>
+      <LuaScript>openProcess("game.exe")</LuaScript>
+    </CheatEntry>
+  </CheatEntries>
+</CheatTable>)";
+    auto r = parser.parse_string(xml);
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE(r.value().entries.empty());
+    GTLIBCPP_REQUIRE_EQ(r.value().unsupported_entries.size(), 1u);
+    GTLIBCPP_REQUIRE(r.value().unsupported_entries[0].auto_assembler);
+}
+
+GTLIBCPP_TEST(fails_closed_on_raw_byte_array) {
+    CheatTableParser parser;
+    const std::string xml = R"(<?xml version="1.0"?>
+<CheatTable>
+  <CheatEntries>
+    <CheatEntry>
+      <ID>12</ID>
+      <Description>Bytes</Description>
+      <Variable><Type>Byte</Type><Address>0x100</Address></Variable>
+      <Bytes>9090909090</Bytes>
+    </CheatEntry>
+  </CheatEntries>
+</CheatTable>)";
+    auto r = parser.parse_string(xml);
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE(r.value().entries.empty());
+    GTLIBCPP_REQUIRE_EQ(r.value().unsupported_entries.size(), 1u);
+    GTLIBCPP_REQUIRE(r.value().unsupported_entries[0].raw_byte_write);
+}
+
+GTLIBCPP_TEST(handles_nested_entries) {
     CheatTableParser parser;
     const std::string xml = R"(<?xml version="1.0"?>
 <CheatTable>
@@ -162,20 +199,18 @@ void test_handles_nested_entries() {
   </CheatEntries>
 </CheatTable>)";
     auto r = parser.parse_string(xml);
-    assert(r.ok());
-    assert(r.value().entries.size() == 1);
-    assert(r.value().entries[0].description == "Parent");
-    std::cout << "test_handles_nested_entries passed\n";
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE_EQ(r.value().entries.size(), 1u);
+    GTLIBCPP_REQUIRE_EQ(r.value().entries[0].description, std::string("Parent"));
 }
 
-void test_malformed_xml_returns_error() {
+GTLIBCPP_TEST(malformed_xml_returns_error) {
     CheatTableParser parser;
     auto r = parser.parse_string("<CheatTable><CheatEntries><CheatEntry>");
-    assert(!r.ok());
-    std::cout << "test_malformed_xml_returns_error passed\n";
+    GTLIBCPP_REQUIRE(!r);
 }
 
-void test_hex_and_signed_values_preserved() {
+GTLIBCPP_TEST(hex_and_signed_values_preserved) {
     CheatTableParser parser;
     const std::string xml = R"(<?xml version="1.0"?>
 <CheatTable>
@@ -195,58 +230,42 @@ void test_hex_and_signed_values_preserved() {
   </CheatEntries>
 </CheatTable>)";
     auto r = parser.parse_string(xml);
-    assert(r.ok());
-    assert(r.value().entries.size() == 1);
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE_EQ(r.value().entries.size(), 1u);
     const auto& e = r.value().entries[0];
-    assert(e.offsets.size() == 2);
-    assert(e.offsets[0] == 0x10);
-    assert(e.offsets[1] == 0x20);
-    std::cout << "test_hex_and_signed_values_preserved passed\n";
+    GTLIBCPP_REQUIRE_EQ(e.offsets.size(), 2u);
+    GTLIBCPP_REQUIRE_EQ(e.offsets[0], 0x10u);
+    GTLIBCPP_REQUIRE_EQ(e.offsets[1], 0x20u);
 }
 
-void test_igi_fixture_parses() {
+GTLIBCPP_TEST(igi_fixture_parses) {
     std::ifstream f("CheatTable/IGI.CT");
     if (!f) {
-        std::cout << "test_igi_fixture_parses skipped (fixture missing)\n";
+        std::printf("  (skipped: CheatTable/IGI.CT not present)\n");
         return;
     }
     std::ostringstream ss;
     ss << f.rdbuf();
     CheatTableParser parser;
     auto r = parser.parse_string(ss.str());
-    assert(r.ok());
-    assert(!r.value().entries.empty()
-           || !r.value().unsupported_entries.empty());
-    std::cout << "test_igi_fixture_parses passed\n";
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE(!r.value().entries.empty()
+                     || !r.value().unsupported_entries.empty());
 }
 
-void test_assaultcube_fixture_parses() {
+GTLIBCPP_TEST(assaultcube_fixture_parses) {
     std::ifstream f("CheatTable/assaultcube.ct");
     if (!f) {
-        std::cout << "test_assaultcube_fixture_parses skipped (fixture missing)\n";
+        std::printf("  (skipped: CheatTable/assaultcube.ct not present)\n");
         return;
     }
     std::ostringstream ss;
     ss << f.rdbuf();
     CheatTableParser parser;
     auto r = parser.parse_string(ss.str());
-    assert(r.ok());
-    std::cout << "test_assaultcube_fixture_parses passed\n";
+    GTLIBCPP_REQUIRE(r);
 }
 
-} // namespace
-
 int main() {
-    test_parses_simple_uint_entry();
-    test_preserves_multiple_hotkeys();
-    test_distinguishes_byte_from_char();
-    test_fails_closed_on_auto_assembler();
-    test_fails_closed_on_loadlibrary();
-    test_handles_nested_entries();
-    test_malformed_xml_returns_error();
-    test_hex_and_signed_values_preserved();
-    test_igi_fixture_parses();
-    test_assaultcube_fixture_parses();
-    std::cout << "gtlibcpp parser tests: all passed\n";
-    return 0;
+    return GTLIBCPP_RUN_ALL();
 }

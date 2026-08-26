@@ -1,8 +1,11 @@
 #include "gtlibcpp/windows_backend.hpp"
 
 #include <windows.h>
+#include <bcrypt.h>
 #include <psapi.h>
 #include <cstring>
+#include <fstream>
+#include <vector>
 
 namespace gtlibcpp {
 
@@ -14,8 +17,6 @@ public:
         identity_.pid = options_.pid;
         identity_.image_path = options_.image_path;
         identity_.architecture = options_.architecture;
-        identity_.start_time = query_start_time(options_.pid);
-        identity_.image_sha256 = query_image_sha256(options_.pid);
         const DWORD access = options_.read_only
             ? PROCESS_VM_READ | PROCESS_QUERY_INFORMATION
             : (options_.desired_access
@@ -23,6 +24,10 @@ public:
                  : (PROCESS_VM_READ | PROCESS_VM_WRITE
                     | PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION));
         handle_ = ::OpenProcess(access, FALSE, options_.pid);
+        if (handle_) {
+            identity_.start_time = query_start_time(handle_);
+        }
+        identity_.image_sha256 = query_image_sha256(options_.image_path);
     }
 
     ~WindowsBackend() override {
@@ -103,26 +108,57 @@ public:
     [[nodiscard]] TargetIdentity identity() const override { return identity_; }
 
 private:
-    static std::uint64_t query_start_time(std::uint32_t pid) {
-        HANDLE snapshot = ::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (snapshot == INVALID_HANDLE_VALUE) return 0;
-        PROCESSENTRY32 entry{};
-        entry.dwSize = sizeof(entry);
-        std::uint64_t start = 0;
-        if (::Process32First(snapshot, &entry)) {
-            do {
-                if (entry.th32ProcessID == pid) {
-                    start = static_cast<std::uint64_t>(entry.dwFlags) << 32
-                          | static_cast<std::uint64_t>(entry.pcPriClassBase);
-                    break;
-                }
-            } while (::Process32Next(snapshot, &entry));
+    static std::uint64_t query_start_time(HANDLE process) {
+        if (!process) return 0;
+        FILETIME creation{}, exit{}, kernel{}, user{};
+        if (!::GetProcessTimes(process, &creation, &exit, &kernel, &user)) {
+            return 0;
         }
-        ::CloseHandle(snapshot);
-        return start;
+        // FILETIME is 100-ns intervals since 1601-01-01. We return the
+        // raw value (not Unix-epoch-corrected) so callers can compare
+        // identities consistently; the policy layer only does equality.
+        return static_cast<std::uint64_t>(creation.dwLowDateTime)
+             | (static_cast<std::uint64_t>(creation.dwHighDateTime) << 32);
     }
-    static std::string query_image_sha256(std::uint32_t /*pid*/) {
-        return {};
+    static std::string query_image_sha256(const std::string& image_path) {
+        if (image_path.empty()) return {};
+        HANDLE file = ::CreateFileA(
+            image_path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE) return {};
+        BCRYPT_ALG_HANDLE alg = nullptr;
+        BCRYPT_HASH_HANDLE hash = nullptr;
+        std::vector<std::uint8_t> digest(32);
+        if (!BCRYPT_SUCCESS(::BCryptOpenAlgorithmProvider(
+                &alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0))) {
+            ::CloseHandle(file); return {};
+        }
+        if (!BCRYPT_SUCCESS(::BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0))) {
+            ::BCryptCloseAlgorithmProvider(alg, 0);
+            ::CloseHandle(file); return {};
+        }
+        std::vector<std::uint8_t> buffer(64 * 1024);
+        for (;;) {
+            DWORD got = 0;
+            if (!::ReadFile(file, buffer.data(), static_cast<DWORD>(buffer.size()), &got, nullptr)
+                || got == 0) {
+                break;
+            }
+            ::BCryptHashData(hash, buffer.data(), got, 0);
+        }
+        ::CloseHandle(file);
+        DWORD cb = 0;
+        ::BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0);
+        ::BCryptDestroyHash(hash);
+        ::BCryptCloseAlgorithmProvider(alg, 0);
+        static const char* kHex = "0123456789abcdef";
+        std::string out;
+        out.reserve(digest.size() * 2);
+        for (auto b : digest) {
+            out.push_back(kHex[(b >> 4) & 0xF]);
+            out.push_back(kHex[b & 0xF]);
+        }
+        return out;
     }
 
     WindowsBackendOptions options_;

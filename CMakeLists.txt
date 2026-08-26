@@ -52,7 +52,7 @@ if(WIN32)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include>
     )
-    target_link_libraries(gtlibcpp_win32 PUBLIC gtlibcpp::core psapi)
+    target_link_libraries(gtlibcpp_win32 PUBLIC gtlibcpp::core psapi bcrypt)
     target_compile_definitions(gtlibcpp_win32 PRIVATE _WIN32_WINNT=0x0601)
     add_library(gtlibcpp::win32 ALIAS gtlibcpp_win32)
 endif()
@@ -111,6 +111,10 @@ if(GTLIBCPP_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests
     )
     add_test(NAME gtlibcpp_agent_tests COMMAND gtlibcpp_agent_tests)
+
+    add_executable(gtlibcpp_security_tests tests/security_tests.cpp)
+    target_link_libraries(gtlibcpp_security_tests PRIVATE gtlibcpp::core)
+    add_test(NAME gtlibcpp_security_tests COMMAND gtlibcpp_security_tests)
 endif()
 
 if(GTLIBCPP_BUILD_DEMOS)

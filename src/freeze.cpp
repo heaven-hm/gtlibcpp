@@ -1,4 +1,5 @@
 #include "gtlibcpp/freeze.hpp"
+#include "gtlibcpp/log.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -36,70 +37,96 @@ std::size_t FreezeManager::size_for_type(const std::string& type_name) {
 }
 
 Result<void> FreezeManager::freeze(FreezeRequest request) {
-    if (!session_) {
-        return Result<void>::failure(make_error(
-            ErrorCode::not_connected, "no session attached",
-            "FreezeManager::freeze"));
-    }
-    if (request.address == invalid_address) {
-        return Result<void>::failure(make_error(
-            ErrorCode::invalid_address, "freeze address is 0",
-            "FreezeManager::freeze"));
-    }
-    if (request.size == 0) request.size = size_for_type(request.type_name);
-    if (request.size == 0 || request.size > sizeof(std::uint64_t)) {
-        return Result<void>::failure(make_error(
-            ErrorCode::invalid_type, "unknown freeze type " + request.type_name,
-            "FreezeManager::freeze", request.address));
-    }
-    if (request.id.empty()) {
-        return Result<void>::failure(make_error(
-            ErrorCode::invalid_entry_id, "freeze id must be non-empty",
-            "FreezeManager::freeze", request.address));
-    }
-    if (request.interval < std::chrono::milliseconds(1)) {
-        request.interval = std::chrono::milliseconds(50);
-    }
-    std::shared_ptr<Entry> entry;
-    {
-        std::lock_guard<std::mutex> lock(entries_mutex_);
-        if (entries_.count(request.id)) {
+    try {
+        if (!session_) {
             return Result<void>::failure(make_error(
-                ErrorCode::invalid_entry_id,
-                "freeze id already active: " + request.id,
+                ErrorCode::not_connected, "no session attached",
+                "FreezeManager::freeze"));
+        }
+        if (request.address == invalid_address) {
+            return Result<void>::failure(make_error(
+                ErrorCode::invalid_address, "freeze address is 0",
+                "FreezeManager::freeze"));
+        }
+        if (request.size == 0) request.size = size_for_type(request.type_name);
+        if (request.size == 0 || request.size > sizeof(std::uint64_t)) {
+            return Result<void>::failure(make_error(
+                ErrorCode::invalid_type, "unknown freeze type " + request.type_name,
                 "FreezeManager::freeze", request.address));
         }
-        const auto initial = session_->read_bytes(request.address, request.size);
-        if (!initial) {
+        if (request.id.empty()) {
             return Result<void>::failure(make_error(
-                initial.error().code,
-                "freeze could not snapshot the original value: " + initial.error().message,
-                "FreezeManager::freeze", request.address, request.size,
-                initial.error().system_error));
+                ErrorCode::invalid_entry_id, "freeze id must be non-empty",
+                "FreezeManager::freeze", request.address));
         }
-        entry = std::make_shared<Entry>();
-        entry->request = request;
-        entry->original_bytes = initial.value();
-        entry->active.store(true);
-        entry->cancel->store(false);
-        entries_.emplace(request.id, entry);
+        if (request.interval < std::chrono::milliseconds(1)) {
+            request.interval = std::chrono::milliseconds(50);
+        }
+        std::shared_ptr<Entry> entry;
+        {
+            std::lock_guard<std::mutex> lock(entries_mutex_);
+            if (entries_.count(request.id)) {
+                return Result<void>::failure(make_error(
+                    ErrorCode::invalid_entry_id,
+                    "freeze id already active: " + request.id,
+                    "FreezeManager::freeze", request.address));
+            }
+            const auto initial = session_->read_bytes(request.address, request.size);
+            if (!initial) {
+                return Result<void>::failure(make_error(
+                    initial.error().code,
+                    "freeze could not snapshot the original value: " + initial.error().message,
+                    "FreezeManager::freeze", request.address, request.size,
+                    initial.error().system_error));
+            }
+            entry = std::make_shared<Entry>();
+            entry->request = request;
+            entry->original_bytes = initial.value();
+            entry->active.store(true);
+            entry->cancel->store(false);
+            entries_.emplace(request.id, entry);
+        }
+        std::shared_ptr<std::atomic<bool>> cancel_token;
+        std::shared_ptr<Entry> captured;
+        {
+            std::lock_guard<std::mutex> lock(entries_mutex_);
+            captured = entries_[request.id];
+            cancel_token = captured->cancel;
+        }
+        captured->worker = std::thread([this, captured, cancel_token]() {
+            try {
+                worker_loop(captured);
+            } catch (const std::exception& e) {
+                Logger::instance().error("FreezeManager::worker_loop", e.what(),
+                                         ErrorCode::internal, captured->request.address);
+            } catch (...) {
+                Logger::instance().error("FreezeManager::worker_loop", "unknown exception",
+                                         ErrorCode::internal, captured->request.address);
+            }
+        });
+        Logger::instance().info("FreezeManager::freeze", "freeze started",
+                                request.address, request.size);
+        return Result<void>::success();
+    } catch (const std::exception& e) {
+        Logger::instance().error("FreezeManager::freeze", e.what(),
+                                 ErrorCode::internal, request.address);
+        return Result<void>::failure(make_error(
+            ErrorCode::internal, e.what(), "FreezeManager::freeze", request.address));
+    } catch (...) {
+        Logger::instance().error("FreezeManager::freeze", "unknown exception",
+                                 ErrorCode::internal, request.address);
+        return Result<void>::failure(make_error(
+            ErrorCode::internal, "unknown exception",
+            "FreezeManager::freeze", request.address));
     }
-    std::shared_ptr<std::atomic<bool>> cancel_token;
-    std::shared_ptr<Entry> captured;
-    {
-        std::lock_guard<std::mutex> lock(entries_mutex_);
-        captured = entries_[request.id];
-        cancel_token = captured->cancel;
-    }
-    captured->worker = std::thread([this, captured, cancel_token]() {
-        worker_loop(captured);
-    });
-    return Result<void>::success();
 }
 
 void FreezeManager::worker_loop(std::shared_ptr<Entry> entry) {
     std::vector<std::uint8_t> write_bytes(entry->request.size);
     u64_to_bytes(entry->request.value_u64, write_bytes.data(), entry->request.size);
+    // Slice the interval into 1 ms steps so we react to cancel quickly
+    // even when the requested interval is short or zero.
+    const auto total_ms = std::max<std::int64_t>(1, entry->request.interval.count());
     while (!entry->cancel->load() && entry->active.load()) {
         if (!session_->is_alive()) {
             entry->active.store(false);
@@ -120,12 +147,10 @@ void FreezeManager::worker_loop(std::shared_ptr<Entry> entry) {
         } else {
             entry->ok_count.fetch_add(1);
         }
-        for (int slept = 0; slept < 50; ++slept) {
+        // Sleep in 1 ms slices and bail out on cancel.
+        for (std::int64_t slept = 0; slept < total_ms; ++slept) {
             if (entry->cancel->load() || !entry->active.load()) break;
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(
-                    std::max<std::chrono::milliseconds::rep>(
-                        1, entry->request.interval.count() / 50)));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 }
