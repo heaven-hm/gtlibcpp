@@ -1,0 +1,87 @@
+name: Windows CI
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master, develop]
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # x64 MSVC via the ilammy/msvc-dev-cmd action, which downloads
+          # and sets up the Visual Studio Build Tools on the hosted
+          # runner (the windows-latest image no longer ships with VS
+          # preinstalled). The action's `arch` parameter puts the
+          # matching cl.exe first in PATH, so we don't need to pass
+          # -A or -DCMAKE_GENERATOR_PLATFORM to cmake (Ninja is
+          # single-config and rejects both).
+          - name: windows-x64-msvc
+            os: windows-latest
+            arch: x64
+            cxx: cl
+            cxx_compiler: cl.exe
+          - name: windows-x64-clang-cl
+            os: windows-latest
+            arch: x64
+            cxx: clang-cl
+            # Use the bundled clang-cl shipped with the VS install; the
+            # standalone LLVM 18 from aminya/setup-cpp lacks the MSVC
+            # STL headers that the standard library requires.
+            cxx_compiler: clang-cl.exe
+          - name: windows-x86-msvc
+            os: windows-latest
+            arch: x86
+            cxx: cl
+            cxx_compiler: cl.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC dev cmd (cl + clang-cl)
+        # The ilammy action exposes both cl.exe and the bundled
+        # clang-cl.exe under $VSINSTALLDIR\VC\Tools\Llvm\<arch>\bin.
+        # We pick one or the other per job via CMAKE_C_COMPILER.
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+
+      - name: Configure (Ninja, ${{ matrix.cxx }}, ${{ matrix.arch }})
+        shell: cmd
+        run: |
+          cmake -S . -B build ^
+            -G "Ninja" ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_C_COMPILER=${{ matrix.cxx_compiler }} ^
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx_compiler }} ^
+            -DGTLIBCPP_BUILD_TESTS=ON ^
+            -DGTLIBCPP_BUILD_DEMOS=OFF
+
+      - name: Build
+        shell: cmd
+        run: cmake --build build --config Release --parallel
+
+      - name: Test (ctest)
+        shell: cmd
+        run: |
+          cd build
+          ctest -C Release --output-on-failure
+
+      - name: Install + package
+        if: matrix.arch == 'x64' && matrix.cxx == 'cl'
+        shell: cmd
+        run: |
+          cmake --install build --config Release --prefix package
+          7z a gtlibcpp-${{ matrix.arch }}.zip package
+
+      - name: Upload artifact
+        if: matrix.arch == 'x64' && matrix.cxx == 'cl'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtlibcpp-${{ matrix.arch }}
+          path: gtlibcpp-${{ matrix.arch }}.zip
