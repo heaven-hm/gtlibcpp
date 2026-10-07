@@ -17,7 +17,7 @@ The new `gtlibcpp::` core in `include/gtlibcpp/` is the supported path.
 | Build       | CMake ≥ 3.16, MSVC 14.30+, clang-cl 18+           |
 | Tests       | 42 regressions across 4 executables                |
 | CI          | GitHub Actions (MSVC + clang-cl × x86 + x64)       |
-| License     | MIT (see [LICENSE](LICENSE))                       |
+| License | Heaven-HM Community Modding License (see [LICENSE](LICENSE)) |
 
 ## What it gives you
 
@@ -117,4 +117,18 @@ vulnerability-reporting policy.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Heaven-HM Community Modding License — see [LICENSE](LICENSE).
+
+## License and responsible use
+
+This project's Heaven-HM-owned material uses the
+[Heaven-HM Community Modding License](LICENSE). You may modify the
+source and create and share free, lawful, noncommercial mods. Selling the
+covered software or resulting mods, or charging for access, requires separate
+written permission. Illegal activity, infringement, malware, unauthorized
+access, and intentional real-world harm are prohibited. Preserve attribution
+and follow third-party licenses. Fictional events in games are not real-world harm.
+
+This is a **source-available** project under a custom restrictive license.
+[Prior permissions and separately licensed material](LICENSE_SCOPE.md) remain
+valid; this change does not revoke rights granted for earlier versions.
