@@ -8,6 +8,12 @@
 #include <cstring>
 #include <sstream>
 #include <utility>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace gtlibcpp {
 
@@ -765,6 +771,7 @@ Result<std::string> AgentService::handle(const std::string& request_json) {
 
 void AgentService::serve(std::shared_ptr<IAgentTransport> transport) {
     stop_flag_.store(false);
+    active_transport_ = transport;
     server_thread_ = std::thread([this, transport]() {
         while (!stop_flag_.load()) {
             auto request = transport->receive();
@@ -783,8 +790,14 @@ void AgentService::serve(std::shared_ptr<IAgentTransport> transport) {
 void AgentService::stop() {
     stop_flag_.store(true);
     if (server_thread_.joinable()) {
+#ifdef _WIN32
+        // Cancel synchronous ReadFile/ConnectNamedPipe on the worker thread.
+        ::CancelSynchronousIo(server_thread_.native_handle());
+#endif
+        if (active_transport_) active_transport_->close();
         server_thread_.join();
     }
+    active_transport_.reset();
 }
 
 } // namespace gtlibcpp
