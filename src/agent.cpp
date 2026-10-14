@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <sstream>
 #include <utility>
 #ifdef _WIN32
@@ -481,6 +482,7 @@ JsonValue AgentService::on_preview(const JsonValue& params) {
     pa.freeze_id = json_get_string(params, "id");
     pa.freeze_type = json_get_string(params, "type", "uint32");
     pa.freeze_value = json_get_int(params, "value", 0);
+    if (const auto* v = json_get(params, "value")) pa.freeze_value_json = json_encode(*v);
     pa.freeze_interval_ms = json_get_int(params, "interval_ms", 50);
     auto initial = session_->read_bytes(request.address, request.size);
     if (!initial) {
@@ -631,6 +633,22 @@ JsonValue AgentService::on_freeze(const JsonValue& params) {
     fr.address = static_cast<Address>(json_get_int(params, "address"));
     fr.type_name = json_get_string(params, "type", "uint32");
     fr.value_u64 = static_cast<std::uint64_t>(json_get_int(params, "value"));
+    if (fr.type_name == "float" || fr.type_name == "double") {
+        const auto* v = json_get(params, "value");
+        if (!v || (v->kind != JsonValue::Kind::integer && v->kind != JsonValue::Kind::real)) {
+            return error_response(json_get_string(params, "request_id"),
+                                  static_cast<std::int32_t>(ErrorCode::invalid_type),
+                                  "floating-point freeze requires numeric value");
+        }
+        fr.floating_value = v->kind == JsonValue::Kind::real
+            ? v->real : static_cast<double>(v->integer);
+        if (!std::isfinite(fr.floating_value)) {
+            return error_response(json_get_string(params, "request_id"),
+                                  static_cast<std::int32_t>(ErrorCode::invalid_type),
+                                  "floating-point freeze value must be finite");
+        }
+        fr.has_floating_value = true;
+    }
     fr.size = static_cast<std::size_t>(json_get_int(params, "size", 0));
     const std::int64_t interval = json_get_int(params, "interval_ms", 50);
     fr.interval = std::chrono::milliseconds(interval);
@@ -656,7 +674,8 @@ JsonValue AgentService::on_freeze(const JsonValue& params) {
         pending_.erase(it);
     }
     if (token.freeze_id != fr.id || token.freeze_type != fr.type_name
-        || token.freeze_value != json_get_int(params, "value")
+        || !json_get(params, "value")
+        || token.freeze_value_json != json_encode(*json_get(params, "value"))
         || token.freeze_interval_ms != interval) {
         return error_response(request.request_id,
                               static_cast<std::int32_t>(ErrorCode::policy_denied),
