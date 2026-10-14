@@ -126,7 +126,16 @@ int main() {
 
     assert(client->send(R"({"jsonrpc":"2.0","id":"10","method":"inspect","params":{}})").ok());
     auto stream_reply = client->receive();
-    assert(stream_reply && stream_reply.value().find("\"result\"") != std::string::npos);
+    for (int attempt = 0; !stream_reply && attempt < 50; ++attempt) {
+        // InProcTransport::receive may return an ordinary 50ms timeout.
+        stream_reply = client->receive();
+    }
+    if (!stream_reply || stream_reply.value().find("\"result\"") == std::string::npos) {
+        std::cerr << "Agent transport did not return a JSON-RPC response\n";
+        transport_pair->close();
+        agent->stop();
+        return 1;
+    }
     std::cout << "[+] Stream Transport Reply: " << stream_reply.value() << "\n";
     agent->stop();
 
