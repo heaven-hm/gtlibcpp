@@ -30,7 +30,11 @@ single-configuration generators and may be under `build/examples/Release/`
 ## Run a trainer through MCP
 
 ```sh
-python3 examples/agent_trainer_client.py --exe build/examples/gtlibcpp_agent_trainer
+# Run native C++ trainer client against the trainer server:
+./build/examples/gtlibcpp_agent_trainer_client --exe build/examples/gtlibcpp_agent_trainer
+
+# Or run with auto-discovery:
+./build/examples/gtlibcpp_agent_trainer_client
 ```
 
 This client initializes MCP, lists tools, inspects the simulated game, and
@@ -65,7 +69,7 @@ MCP availability and config file locations vary by client.
 ## Run a trainer through direct JSON-RPC
 
 ```sh
-python3 examples/agent_trainer_client.py --exe build/examples/gtlibcpp_agent_trainer --mode json-rpc
+./build/examples/gtlibcpp_agent_trainer_client --mode json-rpc
 ```
 
 A direct request is one line of JSON followed by a newline:

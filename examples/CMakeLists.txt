@@ -65,3 +65,18 @@ target_include_directories(gtlibcpp_agent_trainer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
 )
+
+# Native C++ trainer client: MCP tools and JSON-RPC gateway runner.
+add_executable(gtlibcpp_agent_trainer_client agent_trainer_client.cpp)
+if(GTLIBCPP_BUILD_TESTS)
+    add_test(NAME e2e_agent_trainer_client COMMAND gtlibcpp_agent_trainer_client --exe $<TARGET_FILE:gtlibcpp_agent_trainer>)
+endif()
+target_link_libraries(gtlibcpp_agent_trainer_client PRIVATE ${GTLIBCPP_CORE_TARGET})
+if(WIN32)
+    target_link_libraries(gtlibcpp_agent_trainer_client PRIVATE ${GTLIBCPP_WIN32_TARGET})
+endif()
+target_include_directories(gtlibcpp_agent_trainer_client PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+)
+
