@@ -79,6 +79,7 @@ struct ApprovalToken {
     std::string freeze_id{};
     std::string freeze_type{};
     std::int64_t freeze_value{0};
+    std::string freeze_value_json{};
     std::int64_t freeze_interval_ms{0};
     std::string  signature{};
 };
