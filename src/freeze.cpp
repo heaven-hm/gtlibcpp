@@ -84,26 +84,21 @@ Result<void> FreezeManager::freeze(FreezeRequest request) {
             entry->original_bytes = initial.value();
             entry->active.store(true);
             entry->cancel->store(false);
+            // Publish the entry and its worker atomically under the registry lock.
+            // Shutdown callers cannot see a partially constructed worker.
+            entry->worker = std::thread([this, entry]() {
+                try {
+                    worker_loop(entry);
+                } catch (const std::exception& e) {
+                    Logger::instance().error("FreezeManager::worker_loop", e.what(),
+                                             ErrorCode::internal, entry->request.address);
+                } catch (...) {
+                    Logger::instance().error("FreezeManager::worker_loop", "unknown exception",
+                                             ErrorCode::internal, entry->request.address);
+                }
+            });
             entries_.emplace(request.id, entry);
         }
-        std::shared_ptr<std::atomic<bool>> cancel_token;
-        std::shared_ptr<Entry> captured;
-        {
-            std::lock_guard<std::mutex> lock(entries_mutex_);
-            captured = entries_[request.id];
-            cancel_token = captured->cancel;
-        }
-        captured->worker = std::thread([this, captured, cancel_token]() {
-            try {
-                worker_loop(captured);
-            } catch (const std::exception& e) {
-                Logger::instance().error("FreezeManager::worker_loop", e.what(),
-                                         ErrorCode::internal, captured->request.address);
-            } catch (...) {
-                Logger::instance().error("FreezeManager::worker_loop", "unknown exception",
-                                         ErrorCode::internal, captured->request.address);
-            }
-        });
         Logger::instance().info("FreezeManager::freeze", "freeze started",
                                 request.address, request.size);
         return Result<void>::success();
