@@ -58,7 +58,7 @@ int main() {
     std::string preview_req = R"({
         "request_id":"op-e2e-1","target_alias":"CyberAssault","capability":"write",
         "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"abc",
-        "value_repr":"uint32 999"})";
+        "value_hex":"e7030000","value_repr":"uint32 999"})";
     std::string preview_reply = rpc_call("preview", preview_req, "3");
     std::cout << "    Reply: " << preview_reply << "\n";
     assert(preview_reply.find("\"error\"") == std::string::npos);
@@ -84,9 +84,17 @@ int main() {
 
     // 6. Freeze via JSON-RPC
     std::cout << "[*] Dispatching RPC 'freeze'...\n";
+    std::string freeze_preview = rpc_call("preview", R"({
+        "request_id":"op-freeze-1","target_alias":"CyberAssault","capability":"freeze",
+        "address":)" + std::to_string(health_addr) + R"(,"size":4,
+        "expected_current_hash":"abc","value_repr":"uint32 999",
+        "id":"agent_freeze_1","type":"uint32","value":999,"interval_ms":20})", "5p");
+    assert(freeze_preview.find("\"error\"") == std::string::npos);
     std::string freeze_reply = rpc_call("freeze", R"({
+        "request_id":"op-freeze-1","target_alias":"CyberAssault","capability":"freeze",
+        "approved":true,"expected_current_hash":"abc","value_repr":"uint32 999",
         "id":"agent_freeze_1","address":)" + std::to_string(health_addr) + R"(,
-        "type":"uint32","value":999,"interval_ms":20})", "5");
+        "size":4,"type":"uint32","value":999,"interval_ms":20})", "5");
     std::cout << "    Reply: " << freeze_reply << "\n";
     assert(freeze_reply.find("\"error\"") == std::string::npos);
 
