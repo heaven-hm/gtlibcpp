@@ -537,12 +537,12 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
         auto addr = variable->attrs.find("Address");
         if (addr != variable->attrs.end() && !addr->second.empty()) {
             std::int64_t v = 0;
-            if (parse_int64(addr->second, v)) entry.address = static_cast<Address>(v);
+            if (parse_ce_offset(addr->second, v)) entry.address = static_cast<Address>(v);
         }
         if (entry.address == 0) {
             if (const auto* addr_node = find_child(variable, "Address")) {
                 std::int64_t v = 0;
-                if (parse_int64(addr_node->text, v)) {
+                if (parse_ce_offset(addr_node->text, v)) {
                     entry.address = static_cast<Address>(v);
                 } else if (!addr_node->text.empty() && addr_node->text.front() == '"') {
                     table.diagnostics.push_back(
