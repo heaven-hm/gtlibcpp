@@ -387,7 +387,7 @@ HANDLE GTLibc::GetGameHandle4mHWND(HWND hwnd)
         {
             throw std::runtime_error("GetWindowThreadProcessId failed\n" + GetLastErrorAsString());
         }
-        HANDLE gameHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
+        gameHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
 
         // Same Wine/hardened-host fallback as the snapshot path above: PROCESS_ALL_ACCESS
         // is refused there, so retry with the rights this library actually uses.
