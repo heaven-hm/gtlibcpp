@@ -481,6 +481,14 @@ JsonValue AgentService::on_preview(const JsonValue& params) {
     pa.freeze_type = json_get_string(params, "type", "uint32");
     pa.freeze_value = json_get_int(params, "value", 0);
     pa.freeze_interval_ms = json_get_int(params, "interval_ms", 50);
+    auto initial = session_->read_bytes(request.address, request.size);
+    if (!initial) {
+        return error_response(request.request_id,
+                              static_cast<std::int32_t>(initial.error().code),
+                              "could not capture the previewed memory state",
+                              &initial.error());
+    }
+    pa.original_bytes = initial.value();
     pa.issued_at_ms = now_ms();
     pa.expires_at_ms = pa.issued_at_ms + 5 * 60 * 1000;
     {
@@ -514,6 +522,17 @@ JsonValue AgentService::on_apply(const JsonValue& params) {
         return error_response(request.request_id,
                               static_cast<std::int32_t>(auth.error().code),
                               auth.error().message, &auth.error());
+    }
+    const auto current = session_->read_bytes(request.address, request.size);
+    if (!current) {
+        return error_response(request.request_id,
+                              static_cast<std::int32_t>(current.error().code),
+                              current.error().message, &current.error());
+    }
+    if (current.value() != token.original_bytes) {
+        return error_response(request.request_id,
+                              static_cast<std::int32_t>(ErrorCode::verification_mismatch),
+                              "target bytes changed since preview");
     }
     auto bytes_str = json_get_string(params, "value_hex");
     if (bytes_str != token.value_hex) {
@@ -641,6 +660,17 @@ JsonValue AgentService::on_freeze(const JsonValue& params) {
         return error_response(request.request_id,
                               static_cast<std::int32_t>(authorized.error().code),
                               authorized.error().message, &authorized.error());
+    }
+    const auto current = session_->read_bytes(request.address, request.size);
+    if (!current) {
+        return error_response(request.request_id,
+                              static_cast<std::int32_t>(current.error().code),
+                              current.error().message, &current.error());
+    }
+    if (current.value() != token.original_bytes) {
+        return error_response(request.request_id,
+                              static_cast<std::int32_t>(ErrorCode::verification_mismatch),
+                              "target bytes changed since freeze preview");
     }
     auto r = freeze_->freeze(fr);
     if (!r) {
