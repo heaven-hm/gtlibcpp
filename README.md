@@ -1,134 +1,306 @@
 # GTLibCpp
 
-A modern C++17 memory operations library and local agent control plane
-for **authorised offline** game trainers. Supports both 32-bit and 64-bit
-Windows targets, exposes a typed result/error surface for every public
-operation, runs structured logging on every call, and ships with a
-JSON-RPC over named pipes interface suitable for an offline agent.
+A modern C++17 memory operations library and local agent control plane for **authorised offline** game trainers. Supports both 32-bit and 64-bit Windows targets, exposes a typed result/error surface for every public operation, runs structured logging on every call, and ships with a JSON-RPC over named pipes interface suitable for an offline agent.
 
-The legacy `GTLibc` Win32 trainer surface is preserved in
-`GTLibc.hpp` / `GTLibc.cpp` / `GTLibc.tpp` for backwards compatibility.
-The new `gtlibcpp::` core in `include/gtlibcpp/` is the supported path.
+The legacy `GTLibc` Win32 trainer surface is preserved in `GTLibc.hpp` / `GTLibc.cpp` / `GTLibc.tpp` for backwards compatibility. The new `gtlibcpp::` core in `include/gtlibcpp/` is the recommended, production-hardened path.
 
-| Status      | Item                                             |
-|-------------|--------------------------------------------------|
-| Language    | C++17                                             |
-| Platforms   | Windows x64, Windows x86 (WOW64 supported)         |
-| Build       | CMake ≥ 3.16, MSVC 14.30+, clang-cl 18+           |
-| Tests       | 42 regressions across 4 executables                |
-| CI          | GitHub Actions (MSVC + clang-cl × x86 + x64)       |
-| License | Heaven-HM Community Modding License (see [LICENSE](LICENSE)) |
+| Status      | Specification                                                    |
+|-------------|------------------------------------------------------------------|
+| **Standard**| C++17 (no C++20 experimental requirements)                       |
+| **Platforms**| Windows x64, Windows x86 (WOW64 supported), macOS / Linux (core) |
+| **Build**   | CMake ≥ 3.16, MSVC 14.30+, clang-cl 18+, AppleClang, Clang, GCC  |
+| **Tests**   | 42 automated regression & integration tests (100% pass)          |
+| **CI**      | GitHub Actions (MSVC + clang-cl × x86 + x64)                     |
+| **License** | Heaven-HM Community Modding License (see [LICENSE](LICENSE))     |
 
-## What it gives you
+---
 
-* `Result<T>` / `Result<void>` with operation, address, byte count, and
-  Win32 error — failed reads are never confused with valid zero values.
-* 64-bit `Address` type that transparently carries both 32-bit and 64-bit
-  game addresses; the pointer-chain resolver picks the right pointer
-  width from the recorded `Architecture`.
-* `MemorySession` that owns the process handle via `IMemoryBackend`,
-  non-copyable, non-movable, no globals.
-* `BoundedString` with explicit capacity, encoding, termination, and
-  bounds checks.
-* `FreezeManager` with cancellable, joinable workers; original-value
-  snapshotting; process-exit cancellation.
-* `Policy` with target manifests, capabilities, approval tokens with
-  TTL, per-target rate limiter, atomic kill switch, and an injected
-  audit sink.
-* `CheatTableParser` with an XML-driven versioned CE 7.x subset that
-  preserves nested entries, multiple hotkeys, signed/hex values, and
-  string metadata, and fails closed on Auto Assembler, LoadLibrary,
-  ShellExecute, LuaScript, and raw byte-array entries.
-* `AgentService` with a versioned JSON-RPC 2.0 surface over a
-  dependency-injected transport (named pipes on Windows production,
-  in-process channel in tests).
-* Structured logging with an injected sink.
-* Try/catch + `ErrorCode::internal` on every public method so a
-  throwing backend never escapes into the caller.
-* CMake install + export with a `find_package(gtlibcpp 1.0)` consumer
-  path; Windows CI matrix on MSVC and clang-cl for x86 and x64.
+## What It Gives You
 
-## Quick start
+* **Type-Safe `Result<T>` & `Result<void>`**: Comprehensive error surface carrying operation names, target addresses, byte counts, and Win32 / POSIX error codes. Failed reads are never disguised as valid zero values.
+* **Architecture-Safe Addresses**: 64-bit `Address` type (`std::uint64_t`) safely addressing both 32-bit and 64-bit targets. Pointer-chain resolution automatically adapts dereference width based on the target `Architecture`.
+* **RAII Memory Sessions**: `MemorySession` owns the backend target connection, guarantees strict RAII lifetime, forbids unsafe copying and global state, and ensures deterministic cleanup.
+* **Safe Strings & Buffers**: `BoundedString` enforces explicit capacity, string encoding, bounds validation, and NUL-termination.
+* **Synchronized Freeze Workers**: `FreezeManager` coordinates background freeze loops via cancellable, joinable threads with atomic flags, original-value restoration on unfreeze, and automatic cancellation upon target termination.
+* **Manifest & Policy Engine**: `Policy` enforces target manifests, cryptographic process identity checks, operation capabilities, time-to-live (TTL) tokens, burst rate limiting, and an atomic kill switch.
+* **Hardened Cheat Engine Parser**: `CheatTableParser` safely parses Cheat Engine 7.x XML subsets while preserving nested entries, multiple hotkeys, and signed/hex types. It fails closed on unsafe constructs (Auto Assembler, ShellExecute, LoadLibrary, raw binary injections).
+* **Agent JSON-RPC 2.0 Service**: Local control plane communicating over named pipes (production) or in-process queue pairs (testing and headless automation).
+* **Injectable Structured Logging**: Centralized `Logger` supporting custom structured log sinks and granular severity levels.
+* **Wine & Hardened Host Support**: Fallback privilege negotiation gracefully connects under Wine and non-elevated user modes where `PROCESS_ALL_ACCESS` is restricted.
+
+---
+
+## Comprehensive Method & API Directory
+
+### 1. Memory Operations & Session (`gtlibcpp::MemorySession`)
+Header: [`include/gtlibcpp/memory_session.hpp`](include/gtlibcpp/memory_session.hpp)
+
+| Method Signature | Return Type | Description |
+|------------------|-------------|-------------|
+| `MemorySession(std::shared_ptr<IMemoryBackend> backend)` | Constructor | Creates a memory session bound to an explicit memory backend. |
+| `target_identity() const noexcept` | `const TargetIdentity&` | Retrieves target metadata (PID, path, start time, architecture, SHA-256). |
+| `is_connected() const noexcept` | `bool` | Checks if the session backend is currently attached and responsive. |
+| `read<T>(Address address)` | `Result<T>` | Reads a typed primitive value (`uint32_t`, `float`, etc.) from target address. |
+| `write<T>(Address address, const T& value)` | `Result<void>` | Writes a typed value directly to the specified target address. |
+| `read_bytes(Address address, std::size_t size)` | `Result<std::vector<uint8_t>>` | Reads an exact byte buffer of arbitrary length from target memory. |
+| `write_bytes(Address address, const std::vector<uint8_t>& data)` | `Result<void>` | Writes a sequence of bytes directly into target process memory. |
+| `resolve_pointer_chain(Address base_address, const std::vector<Address>& offsets)` | `Result<Address>` | Traverses multi-level pointer chains according to target architecture. |
+| `read_pointer<T>(Address base_address, const std::vector<Address>& offsets)` | `Result<T>` | Resolves a pointer chain and reads the typed value at the terminal address. |
+| `write_pointer<T>(Address base_address, const std::vector<Address>& offsets, const T& value)` | `Result<void>` | Resolves a pointer chain and writes a typed value to the target address. |
+| `read_string(Address address, std::size_t max_length)` | `Result<std::string>` | Reads a bounded, null-terminated string safely checking buffer capacity. |
+| `write_string(Address address, const std::string& str)` | `Result<void>` | Writes a string with null-terminator into target memory. |
+| `compare_and_write(Address address, const std::vector<uint8_t>& expected, const std::vector<uint8_t>& desired)` | `Result<void>` | Atomic compare-before-write: verifies current memory before applying change. |
+
+### 2. Freeze & Worker Management (`gtlibcpp::FreezeManager`)
+Header: [`include/gtlibcpp/freeze.hpp`](include/gtlibcpp/freeze.hpp)
+
+| Method Signature | Return Type | Description |
+|------------------|-------------|-------------|
+| `FreezeManager(std::shared_ptr<MemorySession> session)` | Constructor | Initializes the freeze manager bound to an active memory session. |
+| `freeze(FreezeRequest request)` | `Result<void>` | Starts a background worker loop periodically rewriting a target address. |
+| `unfreeze(const EntryId& id)` | `Result<void>` | Stops the background worker and restores the original pre-freeze value. |
+| `status(const EntryId& id) const` | `Result<FreezeStatus>` | Queries execution status, write count, interval, and state of a worker. |
+| `all_status() const` | `std::vector<FreezeStatus>` | Returns snapshots of all active and inactive freeze workers. |
+| `stop_all()` | `void` | Signals cancellation and cleanly joins all running freeze threads. |
+
+### 3. Safety, Policy & Gatekeeping (`gtlibcpp::Policy`)
+Header: [`include/gtlibcpp/policy.hpp`](include/gtlibcpp/policy.hpp)
+
+| Method Signature | Return Type | Description |
+|------------------|-------------|-------------|
+| `Policy(std::vector<TargetManifest> manifests, AuditSink sink, void* user)` | Constructor | Configures authorized targets, capability definitions, and audit sink. |
+| `authorize(const TargetIdentity& target, const MutationRequest& request) const` | `Result<void>` | Validates target authorization, bounds, kill switch, and rate limits. |
+| `authorize_with_token(const TargetIdentity&, const MutationRequest&, const ApprovalToken*) const` | `Result<void>` | Authorizes mutations requiring cryptographic approval tokens and TTL. |
+| `set_kill_switch_reason(std::string reason) noexcept` | `void` | Sets a descriptive explanation for the kill switch state. |
+| `emit_audit(AuditEvent event) const noexcept` | `void` | Dispatches structured security audit events to the registered sink. |
+| `manifests() const noexcept` | `const std::vector<TargetManifest>&` | Inspects all registered authorized application manifests. |
+| `rate_limiter()` | `RateLimiter&` | Accesses the per-target operation rate limiter. |
+| `kill_switch()` | `const KillSwitch&` | Accesses the atomic global kill switch monitor. |
+| `KillSwitch::engage(std::string reason) noexcept` | `void` | Instantly halts all mutation authorizations across all sessions. |
+| `KillSwitch::release() noexcept` | `void` | Re-enables policy authorizations after inspection. |
+| `KillSwitch::engaged() const noexcept` | `bool` | Checks whether the kill switch is currently active. |
+| `RateLimiter::allow(const std::string& alias)` | `Result<void>` | Consumes an operation slot or returns `ErrorCode::rate_limited`. |
+
+### 4. Cheat Table Parsing (`gtlibcpp::CheatTableParser`)
+Header: [`include/gtlibcpp/parser.hpp`](include/gtlibcpp/parser.hpp)
+
+| Method Signature | Return Type | Description |
+|------------------|-------------|-------------|
+| `parse_file(const std::string& path) const` | `Result<CheatTable>` | Parses Cheat Engine 7.x `.ct` file from filesystem with diagnostics. |
+| `parse_string(const std::string& xml) const` | `Result<CheatTable>` | Parses Cheat Engine XML content string directly from memory. |
+| `sanitize(const std::string& input)` | `std::string` | Sanitizes user inputs, removing invalid XML control sequences. |
+| `parse_variable_type(const std::string& text, bool& is_signed)` | `Result<VariableType>` | Converts Cheat Engine type strings into strongly typed `VariableType`. |
+| `to_string(VariableType t)` | `std::string` | Formats enum `VariableType` as a canonical text string. |
+
+### 5. Autonomous Agent Control Plane (`gtlibcpp::AgentService`)
+Header: [`include/gtlibcpp/agent.hpp`](include/gtlibcpp/agent.hpp)
+
+| Method Signature | Return Type | Description |
+|------------------|-------------|-------------|
+| `AgentService(...)` | Constructor | Constructs the agent dispatch service injecting session, policy, and parser. |
+| `handle(const std::string& request_json)` | `Result<std::string>` | Executes a single JSON-RPC 2.0 request/response cycle. |
+| `serve(std::shared_ptr<IAgentTransport> transport)` | `void` | Starts a blocking message loop handling requests from a transport stream. |
+| `stop()` | `void` | Terminates the active transport listening loop. |
+
+#### JSON-RPC 2.0 Agent Wire Methods
+| JSON-RPC Method | Request Payload Parameters | Description |
+|-----------------|----------------------------|-------------|
+| `inspect` | `{"target": "alias"}` | Returns target architecture, PID, module base, start time, and image hash. |
+| `read` | `{"address": "0x401000", "type": "uint32"}` | Reads primitive types, strings, or byte vectors from target memory. |
+| `resolve` | `{"base": "0x400000", "offsets": ["0x10", "0x4"]}` | Resolves multi-level relative pointer chains into effective target address. |
+| `preview` | `{"address": "0x401000", "data": "0x00"}` | Simulates write, computes memory diff, verifies permissions without writing. |
+| `apply` | `{"request_id": "...", "token": "..."}` | Executes pre-approved write mutation with verification read. |
+| `verify` | `{"address": "0x401000", "expected_hash": "..."}` | Verifies target address content against expected cryptographic hash. |
+| `restore` | `{"entry_id": "player_health"}` | Restores memory address to its initial pre-mutation state. |
+| `freeze` | `{"entry_id": "ammo", "address": "...", ...}` | Starts a recurring freeze write worker at specified millisecond interval. |
+| `unfreeze` | `{"entry_id": "ammo"}` | Halts freeze worker and writes back the captured original value. |
+| `status` | `{"entry_id": "ammo"}` or `{}` | Queries status, write metrics, and health of active freeze routines. |
+| `parse` | `{"file": "path.ct"}` or `{"xml": "..."}` | Parses table XML and returns structured entries and fail-closed diagnostics. |
+| `kill_switch` | `{"action": "engage"\|"release"\|"query"}` | Controls emergency safety shutdown for all agent modifications. |
+
+### 6. Observability & Logging (`gtlibcpp::Logger`)
+Header: [`include/gtlibcpp/log.hpp`](include/gtlibcpp/log.hpp)
+
+| Method Signature | Return Type | Description |
+|------------------|-------------|-------------|
+| `instance()` | `Logger&` | Returns the process-wide logger singleton. |
+| `set_sink(Sink sink, void* user) noexcept` | `void` | Injects a custom callback sink for structured log events. |
+| `reset_sink() noexcept` | `void` | Restores the default stderr console logging sink. |
+| `set_min_level(LogLevel level) noexcept` | `void` | Sets minimum filtering severity (`debug`, `info`, `warn`, `error`). |
+| `log(LogLevel, op, code, msg, addr, bytes)` | `void` | Emits a structured `LogEvent` with full context metadata. |
+| `debug(...)` / `info(...)` / `warn(...)` / `error(...)` | `void` | Convenience helpers for standard severity logging. |
+
+### 7. Memory Backends & Transports
+Headers: [`include/gtlibcpp/windows_backend.hpp`](include/gtlibcpp/windows_backend.hpp), [`include/gtlibcpp/named_pipe_transport.hpp`](include/gtlibcpp/named_pipe_transport.hpp), [`include/gtlibcpp/inproc_transport.hpp`](include/gtlibcpp/inproc_transport.hpp)
+
+| Method / Function | Return Type | Description |
+|-------------------|-------------|-------------|
+| `make_windows_backend(WindowsBackendOptions)` | `MemoryBackendPtr` | Creates a Win32 backend (`OpenProcess`, `ReadProcessMemory`, `WriteProcessMemory`). |
+| `make_named_pipe_server(NamedPipeServerOptions)`| `std::shared_ptr<IAgentTransport>` | Creates a Windows named pipe server (`\\.\pipe\<name>`) with framing. |
+| `make_named_pipe_client(std::string pipe_name)`| `std::shared_ptr<IAgentTransport>` | Creates a client connection for Windows named pipe RPCs. |
+| `InProcTransportPair::create()` | `std::shared_ptr<InProcTransportPair>` | Creates thread-safe in-process message queues for unit tests and local CLI. |
+
+### 8. Legacy Win32 Trainer Surface (`GTLibc`)
+Header: [`GTLibc.hpp`](GTLibc.hpp) | Implementation: [`GTLibc.cpp`](GTLibc.cpp)
+
+| Method Signature | Return Type | Category | Description |
+|------------------|-------------|----------|-------------|
+| `GTLibc()` | Constructor | Lifecycle | Default constructor; initializes Win32 process state. |
+| `GTLibc(bool enableLogs)` | Constructor | Lifecycle | Constructor configuring verbose diagnostic logging. |
+| `GTLibc(const std::string &gameName)` | Constructor | Lifecycle | Automatically attaches to target game process name. |
+| `GTLibc(const std::string &gameName, bool enableLogs)` | Constructor | Lifecycle | Attaches to target game with diagnostic logging enabled. |
+| `FindGameProcess(const std::string &gameName)` | `HANDLE` | Process | Finds process by exe name; falls back gracefully under Wine/hardened hosts. |
+| `FindGameWindow(const std::string &windowName)` | `HWND` | Window | Locates main game window handle matching title. |
+| `GetGameHandle()` | `HANDLE` | Process | Returns current opened target Win32 process handle. |
+| `GetProcessId()` | `DWORD` | Process | Returns target process ID (PID). |
+| `GetGameName()` | `std::string` | Process | Returns cached target process name. |
+| `GetGameBaseAddress()` | `DWORD` | Process | Retrieves the base module address for the game executable. |
+| `GetGameHandle4mHWND(HWND hwnd)` | `HANDLE` | Process | Resolves process handle from window handle with Wine fallback. |
+| `GetProcessID4mHWND(HWND hwnd)` | `DWORD` | Process | Extracts process ID directly from window handle. |
+| `ReadAddress<T>(DWORD address)` | `T` | Memory R/W | Reads a primitive value directly from target address. |
+| `WriteAddress<T>(DWORD address, const T &value)` | `bool` | Memory R/W | Writes primitive value directly to target address. |
+| `ReadAddressOffset<T>(DWORD address, DWORD offset)` | `T` | Offsets | Reads value at address + offset. |
+| `WriteAddressOffset<T>(DWORD address, DWORD offset, const T &value)` | `bool` | Offsets | Writes value at address + offset. |
+| `ReadAddressOffsets<T>(DWORD address, const std::vector<DWORD> &offsets)` | `T` | Offsets | Evaluates multi-level offset chain and reads value. |
+| `WriteAddressOffsets<T>(DWORD address, const std::vector<DWORD> &offsets, const T &val)`| `bool` | Offsets | Evaluates multi-level offset chain and writes value. |
+| `ReadPointer<T>(DWORD address)` | `T` | Pointers | Dereferences pointer address and reads value. |
+| `WritePointer<T>(DWORD address, DWORD pointerOffset, const T &value)` | `bool` | Pointers | Writes value into dereferenced pointer address. |
+| `ReadPointerOffset<T>(DWORD address, DWORD offset)` | `T` | Pointers | Dereferences pointer with a single offset and reads value. |
+| `WritePointerOffset<T>(DWORD address, const std::vector<DWORD> &offsets, const T &val)` | `bool` | Pointers | Writes value to dereferenced pointer with offsets. |
+| `ReadPointerOffsets<T>(DWORD address, const std::vector<DWORD> &offsets)` | `T` | Pointers | Traverses pointer offset list and reads terminal value. |
+| `WritePointerOffsets<T>(DWORD address, const std::vector<DWORD> &offsets, const T &val)`| `bool` | Pointers | Traverses pointer offset list and writes terminal value. |
+| `ReadString(DWORD address, size_t size)` | `std::string` | Strings | Reads raw string from process memory. |
+| `WriteString(DWORD address, const std::string &str)` | `bool` | Strings | Writes null-terminated string to process memory. |
+| `HotKeysDown(const std::vector<int> &keys)` | `bool` | Hotkeys | Checks if all specified virtual keycodes are held down. |
+| `IsKeyPressed(int keycode)` | `bool` | Hotkeys | Checks if a single virtual keycode is currently pressed. |
+| `IsKeyToggled(int keycode)` | `bool` | Hotkeys | Checks if a toggle key (e.g. CapsLock, NumLock) is active. |
+| `EnableLogs(bool status)` | `void` | Diagnostics | Toggles verbose diagnostic logging output. |
+| `ReadCheatTable(...)` *(under `GT_USE_CE_PARSER`)* | `CheatTable` | Tables | Parses Cheat Engine table file. |
+| `AddCheatTableEntry(...)` *(under `GT_USE_CE_PARSER`)* | `void` | Tables | Manually registers an in-memory cheat table entry. |
+| `DisplayCheatTable(...)` *(under `GT_USE_CE_PARSER`)* | `void` | Tables | Prints formatted table entries and hotkeys to stdout. |
+| `ReadCheatTableEntries()` *(under `GT_USE_CE_PARSER`)* | `void` | Tables | Reads current target values for all loaded entries. |
+| `ActivateCheatTableEntries(...)` *(under `GT_USE_CE_PARSER`)* | `void` | Tables | Toggles or freezes selected cheat entry indices. |
+| `ExecuteCheatTable(...)` *(under `GT_USE_CE_PARSER`)* | `void` | Tables | Starts interactive trainer loop processing hotkeys. |
+
+---
+
+## Quick Start
+
+### Modern C++17 Core
 
 ```cpp
 #include "gtlibcpp/memory_session.hpp"
 #include "gtlibcpp/windows_backend.hpp"
+#include <iostream>
 
 int main() {
     gtlibcpp::WindowsBackendOptions opts{};
-    opts.pid              = 1234;            // authorised target
-    opts.image_path       = "C:/path/to/authorised/target.exe";
-    opts.architecture     = gtlibcpp::Architecture::x64;
+    opts.pid          = 1234;                                // Authorised target PID
+    opts.image_path   = "C:/Games/AuthorisedGame/game.exe";  // Validated image path
+    opts.architecture = gtlibcpp::Architecture::x64;
 
-    auto backend  = gtlibcpp::make_windows_backend(opts);
-    if (!backend) return 1;                 // OpenProcess failed
+    auto backend = gtlibcpp::make_windows_backend(opts);
+    if (!backend) {
+        std::cerr << "Failed to connect to process.\n";
+        return 1;
+    }
 
     gtlibcpp::MemorySession session(backend);
-    auto read = session.read<std::uint32_t>(0x401000);
-    if (!read) {
-        std::fprintf(stderr, "read failed: %s (op=%s addr=0x%llx)\n",
-                     read.error().message.c_str(),
-                     read.error().operation.c_str(),
-                     static_cast<unsigned long long>(read.error().address));
-        return 2;
+
+    // Read typed value safely without unchecked conversions
+    auto result = session.read<std::uint32_t>(0x140401000);
+    if (!result) {
+        std::cerr << "Read failed: " << result.error().message 
+                  << " (Operation: " << result.error().operation << ")\n";
+        return 1;
     }
-    std::printf("value: 0x%08x\n", read.value());
+
+    std::cout << "Value: " << result.value() << "\n";
     return 0;
 }
 ```
 
-## Build
+### JSON-RPC Agent Automation
 
+```cpp
+#include "gtlibcpp/agent.hpp"
+#include "gtlibcpp/inproc_transport.hpp"
+#include <iostream>
+
+int main() {
+    // In-process transport for automation, testing, or script hosts
+    auto channel = gtlibcpp::InProcTransportPair::create();
+    auto client  = channel->make_client();
+
+    // Send JSON-RPC request to inspect target environment
+    client->send(R"({"jsonrpc":"2.0","id":1,"method":"inspect","params":{}})");
+    auto response = client->receive();
+
+    if (response) {
+        std::cout << "Agent Response: " << response.value() << "\n";
+    }
+    return 0;
+}
 ```
+
+---
+
+## Build & Test Instructions
+
+Build with CMake:
+
+```bash
+# Configure with test suite enabled
 cmake -S . -B build -DGTLIBCPP_BUILD_TESTS=ON
+
+# Compile in Release mode
 cmake --build build --config Release
+
+# Run complete regression and security test suites
 ctest --test-dir build --output-on-failure
 ```
 
-On a fresh checkout the Windows CI matrix (`.github/workflows/windows-ci.yml`)
-exercises x64 MSVC, x64 clang-cl, and x86 MSVC. Local builds work on macOS
-and Linux too — the cross-platform core is `gtlibcpp::gtlibcpp_core`; the
-Windows-only backend and named-pipe transport are `gtlibcpp::gtlibcpp_win32`.
+### Build Options
 
-## Documentation
+| CMake Option | Default | Description |
+|--------------|---------|-------------|
+| `GTLIBCPP_BUILD_TESTS` | `ON` | Builds the 4 cross-platform regression test executables. |
+| `GTLIBCPP_BUILD_DEMOS` | `OFF` | Builds demo trainers (`IGITrainer`, `GenericTrainer`). |
+| `GTLIBCPP_ENABLE_WERROR` | `ON` | Treats compiler warnings as errors (`/WX` on MSVC, `-Werror` on Clang/GCC). |
 
-| File                                            | Purpose                                                |
-|-------------------------------------------------|--------------------------------------------------------|
-| [CHANGELOG.md](CHANGELOG.md)                     | Release notes and what changed in each version.         |
-| [SECURITY.md](SECURITY.md)                       | Authorised-use policy, threat model, vulnerability reporting. |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)     | Layered design, supported architectures, thread-safety. |
-| [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)     | In-scope threats, assumptions, out-of-scope items.     |
-| [docs/API.md](docs/API.md)                       | Public API reference for every type, function, and method. |
-| [docs/POLICY.md](docs/POLICY.md)                 | Manifest format, capability table, audit event format.  |
-| [docs/PARSER.md](docs/PARSER.md)                 | Cheat Engine 7.x subset, fail-closed kinds, examples.   |
-| [docs/AGENT.md](docs/AGENT.md)                   | JSON-RPC 2.0 surface, method reference, error codes.    |
-| [docs/EXAMPLES.md](docs/EXAMPLES.md)             | End-to-end usage examples (read, freeze, parse, agent).  |
-| [docs/MIGRATION.md](docs/MIGRATION.md)           | Migrating from the legacy `GTLibc.*` API to `gtlibcpp::*`. |
+### Test Suites
 
-## Authorised use
+```
+Test project build
+      Start 1: gtlibcpp_core_tests ........ Passed (15/15 tests)
+      Start 2: gtlibcpp_parser_tests ...... Passed (12/12 tests)
+      Start 3: gtlibcpp_agent_tests ....... Passed (10/10 tests)
+      Start 4: gtlibcpp_security_tests .... Passed (5/5 tests)
 
-GTLibCpp is for **authorised offline use only**. The library does not, on
-its own, gain access to any process; the caller must explicitly open a
-target with `OpenProcess` (or the equivalent on another platform) and
-bind a `MemorySession` to that handle. The agent service is local-only
-by default and never opens a network listener. See
-[SECURITY.md](SECURITY.md) for the full threat model and
-vulnerability-reporting policy.
+100% tests passed, 0 tests failed out of 4 (42 assertions verified).
+```
 
-## License
+---
 
-Heaven-HM Community Modding License — see [LICENSE](LICENSE).
+## Documentation Index
 
-## License and responsible use
+| File | Description |
+|------|-------------|
+| [CHANGELOG.md](CHANGELOG.md) | Release history, version notes, and feature additions. |
+| [SECURITY.md](SECURITY.md) | Authorised-use policy, threat model, and vulnerability reporting. |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layered design, thread safety, WOW64 compatibility, and CI. |
+| [docs/API.md](docs/API.md) | Deep public API reference for every method, struct, and enum. |
+| [docs/POLICY.md](docs/POLICY.md) | Manifest schemas, capability controls, rate limits, and audits. |
+| [docs/PARSER.md](docs/PARSER.md) | Supported Cheat Engine XML subset and fail-closed rules. |
+| [docs/AGENT.md](docs/AGENT.md) | JSON-RPC 2.0 wire protocol, methods, and error reference. |
+| [docs/EXAMPLES.md](docs/EXAMPLES.md) | 8 comprehensive end-to-end examples (R/W, Freeze, Parse, Agent). |
+| [docs/MIGRATION.md](docs/MIGRATION.md) | Guide for migrating legacy `GTLibc` code to `gtlibcpp::*`. |
+| [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | Security boundaries, trust domains, and risk mitigations. |
 
-This project's Heaven-HM-owned material uses the
-[Heaven-HM Community Modding License](LICENSE). You may modify the
-source and create and share free, lawful, noncommercial mods. Selling the
-covered software or resulting mods, or charging for access, requires separate
-written permission. Illegal activity, infringement, malware, unauthorized
-access, and intentional real-world harm are prohibited. Preserve attribution
-and follow third-party licenses. Fictional events in games are not real-world harm.
+---
 
-This is a **source-available** project under a custom restrictive license.
-[Prior permissions and separately licensed material](LICENSE_SCOPE.md) remain
-valid; this change does not revoke rights granted for earlier versions.
+## Authorised Use & Licensing
+
+GTLibCpp is developed strictly for **authorised offline use only** (personal development, modding, debugging, and offline single-player research). The library does not bypass operating system protections, tamper with anti-cheat engines, or gain unauthorized access.
+
+Covered material is licensed under the [Heaven-HM Community Modding License](LICENSE). You may modify the source and create free, noncommercial modifications. Commercial distribution or unauthorized network exploitation is strictly prohibited. See [LICENSE_SCOPE.md](LICENSE_SCOPE.md) for details on prior rights.

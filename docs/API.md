@@ -638,7 +638,86 @@ public:
 ## Legacy API
 
 The legacy trainer surface (`GTLibc.hpp`, `GTLibc.cpp`, `GTLibc.tpp`,
-`IGITrainer.cpp`, `GenericTrainer.cpp`, `CEParser.{hpp,cpp}`) is still
-in the tree and is compiled into the optional `gtlibcpp::win32`
-target when `GTLIBCPP_BUILD_DEMOS=ON`. It is not the supported path;
-see [MIGRATION.md](MIGRATION.md).
+`IGITrainer.cpp`, `GenericTrainer.cpp`, `CEParser.{hpp,cpp}`) is preserved
+in the repository for backwards compatibility and is compiled into the
+optional `gtlibcpp::win32` target when `GTLIBCPP_BUILD_DEMOS=ON`. It is slated
+for retirement in 2.0.0; see [MIGRATION.md](MIGRATION.md) for the upgrade path.
+
+### `class GTLibc`
+
+```cpp
+class GTLibc {
+public:
+    GTLibc();
+    explicit GTLibc(bool enableLogs);
+    explicit GTLibc(const std::string &gameName);
+    GTLibc(const std::string &gameName, bool enableLogs);
+    ~GTLibc();
+
+    // Process & Window Management
+    HANDLE FindGameProcess(const std::string &gameName);
+    HWND   FindGameWindow(const std::string &windowName);
+    HANDLE GetGameHandle();
+    DWORD  GetProcessId();
+    std::string GetGameName();
+    DWORD  GetGameBaseAddress();
+    HANDLE GetGameHandle4mHWND(HWND hwnd);
+    DWORD  GetProcessID4mHWND(HWND hwnd);
+
+    // Memory Read & Write
+    template <typename T> T ReadAddress(DWORD address);
+    template <typename T> bool WriteAddress(DWORD address, const T &value);
+
+    // Address + Offset Operations
+    template <typename T> T ReadAddressOffset(DWORD address, DWORD offset);
+    template <typename T> bool WriteAddressOffset(DWORD address, DWORD offset, const T &value);
+    template <typename T> T ReadAddressOffsets(DWORD address, const std::vector<DWORD> &offsets);
+    template <typename T> bool WriteAddressOffsets(DWORD address, const std::vector<DWORD> &offsets, const T &value);
+
+    // Pointer Dereferencing Operations
+    template <typename T> T ReadPointer(DWORD address);
+    template <typename T> bool WritePointer(DWORD address, DWORD pointerOffset, const T &value);
+    template <typename T> T ReadPointerOffset(DWORD address, DWORD offset);
+    template <typename T> bool WritePointerOffset(DWORD address, const std::vector<DWORD> &offsets, const T &value);
+    template <typename T> T ReadPointerOffsets(DWORD address, const std::vector<DWORD> &offsets);
+    template <typename T> bool WritePointerOffsets(DWORD address, const std::vector<DWORD> &offsets, const T &value);
+
+    // String Read & Write
+    std::string ReadString(DWORD address, size_t size);
+    bool WriteString(DWORD address, const std::string &str);
+
+    // Virtual Key Hotkeys
+    bool HotKeysDown(const std::vector<int> &keys);
+    bool IsKeyPressed(int keycode);
+    bool IsKeyToggled(int keycode);
+
+    // Logging
+    void EnableLogs(bool status);
+
+#ifdef GT_USE_CE_PARSER
+    CheatTable ReadCheatTable(const std::string &cheatTableFile, int entries = -1);
+    void AddCheatTableEntry(const std::string &description, const std::string &dataType,
+                            DWORD address, const std::vector<DWORD> &offsets,
+                            const std::vector<int> &hotkeys, const std::string &hotkeyAction,
+                            const std::string hotkeyValue);
+    void DisplayCheatTable(bool showMenuIndex = true, bool showMenuDescription = true,
+                           bool showMenuAction = false, bool showMenuHotkeys = true,
+                           bool showMenuValue = false);
+    void ReadCheatTableEntries();
+    void ActivateCheatTableEntries(const std::vector<int> &cheatEntryIndex);
+    void ExecuteCheatTable(bool showTrainerOutput = false, int exitTrainerKey = 0x7B,
+                           bool showMenuIndex = true, bool showMenuDescription = true,
+                           bool showMenuAction = false, bool showMenuHotkeys = true);
+#endif
+};
+```
+
+| Legacy Method | Equivalent in `gtlibcpp::` | Notes |
+|---------------|---------------------------|-------|
+| `FindGameProcess` | `make_windows_backend` | Returns Win32 `HANDLE`; modern path returns `MemoryBackendPtr` |
+| `ReadAddress<T>` | `MemorySession::read<T>` | Legacy returns default `T{}` on failure; modern returns `Result<T>` |
+| `WriteAddress<T>` | `MemorySession::write<T>` | Modern returns `Result<void>` with exact Win32 error on failure |
+| `ReadAddressOffsets` | `MemorySession::read_pointer<T>` | Modern safely traverses 64-bit and 32-bit pointer chains |
+| `ReadString` / `WriteString` | `MemorySession::read_string` / `write_string` | Modern enforces bounds checking and capacity validation |
+| `ReadCheatTable` | `CheatTableParser::parse_file` | Modern uses XML parsing, preserves all hotkeys, fails closed |
+

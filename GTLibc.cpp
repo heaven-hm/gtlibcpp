@@ -106,6 +106,17 @@ HANDLE GTLibc::FindGameProcess(const std::string &gameName)
                 CloseHandle(hSnapshot);
                 this->gameHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pe.th32ProcessID);
 
+                // PROCESS_ALL_ACCESS is refused by Wine (and by hardened hosts), and the
+                // old fallback below only told the user to elevate. Retry with just the
+                // rights the library actually uses before giving up: VM read/write/op
+                // plus query, which is what every accessor in this class needs.
+                if (this->gameHandle == NULL && pe.th32ProcessID > 0)
+                {
+                    const DWORD granted =
+                        PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION;
+                    this->gameHandle = OpenProcess(granted, FALSE, pe.th32ProcessID);
+                }
+
                 if (this->gameHandle == NULL && pe.th32ProcessID > 0)
                 {
                     BOOL isElevated = IsElevatedProcess();
@@ -377,6 +388,15 @@ HANDLE GTLibc::GetGameHandle4mHWND(HWND hwnd)
             throw std::runtime_error("GetWindowThreadProcessId failed\n" + GetLastErrorAsString());
         }
         HANDLE gameHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
+
+        // Same Wine/hardened-host fallback as the snapshot path above: PROCESS_ALL_ACCESS
+        // is refused there, so retry with the rights this library actually uses.
+        if (!gameHandle)
+        {
+            const DWORD granted =
+                PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION;
+            gameHandle = OpenProcess(granted, FALSE, processId);
+        }
 
         if (!gameHandle)
         {
@@ -1425,12 +1445,14 @@ std::string GTLibc::ValueToString(const T &value)
     }
 }
 
+#ifdef GT_USE_CE_PARSER
 void GTLibc::DisplayCheatValue(DataType &value)
 {
     std::visit([](const auto &item)
                { std::cout << "Value: " << item << std::endl; },
                value);
 }
+#endif
 
 std::string GTLibc::GetLastErrorAsString()
 {
