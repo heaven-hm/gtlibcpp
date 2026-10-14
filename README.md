@@ -274,6 +274,14 @@ See [examples/demo_agent_service.cpp](examples/demo_agent_service.cpp) for the f
 
 ---
 
+## Native MCP and JSON-RPC AI Trainer
+
+Build `gtlibcpp_agent_trainer` in `examples/` to connect AI coding agents using **MCP stdio** or direct GTLibCpp **JSON-RPC 2.0** (`--json-rpc`). The initial tool set is `gt_inspect`, `gt_read`, `gt_resolve`, and `gt_status`.
+
+The example uses simulated game memory and is intentionally **read-only** until review blockers in mutation authorization and transport security are resolved. See [MCP Trainer Setup & Examples](docs/MCP_TRAINER.md) for build steps, agent configuration and example requests.
+
+---
+
 ## Build & Test Instructions
 
 Build with CMake:
