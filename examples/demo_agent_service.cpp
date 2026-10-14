@@ -57,7 +57,7 @@ int main() {
     std::cout << "[*] Dispatching RPC 'preview' for godmode health (999)...\n";
     std::string preview_req = R"({
         "request_id":"op-e2e-1","target_alias":"CyberAssault","capability":"write",
-        "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"abc",
+        "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"40e736c02a102a050e1555781b4171020a4279adaa7ed9ca3cc9633a0ade9c37",
         "value_hex":"e7030000","value_repr":"uint32 999"})";
     std::string preview_reply = rpc_call("preview", preview_req, "3");
     std::cout << "    Reply: " << preview_reply << "\n";
@@ -71,7 +71,7 @@ int main() {
     std::cout << "[*] Dispatching RPC 'apply'...\n";
     std::string apply_req = R"({
         "request_id":"op-e2e-1","target_alias":"CyberAssault","capability":"write",
-        "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"abc",
+        "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"40e736c02a102a050e1555781b4171020a4279adaa7ed9ca3cc9633a0ade9c37",
         "approved":true,"value_hex":"e7030000","value_repr":"uint32 999"})";
     std::string apply_reply = rpc_call("apply", apply_req, "4");
     std::cout << "    Reply: " << apply_reply << "\n";
@@ -87,12 +87,12 @@ int main() {
     std::string freeze_preview = rpc_call("preview", R"({
         "request_id":"op-freeze-1","target_alias":"CyberAssault","capability":"freeze",
         "address":)" + std::to_string(health_addr) + R"(,"size":4,
-        "expected_current_hash":"abc","value_repr":"uint32 999",
+        "expected_current_hash":"d8c85b9b0590a3ea8618fca78dd2451ac34658cdbb9bf2bb065564e92260df9d","value_repr":"uint32 999",
         "id":"agent_freeze_1","type":"uint32","value":999,"interval_ms":20})", "5p");
     assert(freeze_preview.find("\"error\"") == std::string::npos);
     std::string freeze_reply = rpc_call("freeze", R"({
         "request_id":"op-freeze-1","target_alias":"CyberAssault","capability":"freeze",
-        "approved":true,"expected_current_hash":"abc","value_repr":"uint32 999",
+        "approved":true,"expected_current_hash":"d8c85b9b0590a3ea8618fca78dd2451ac34658cdbb9bf2bb065564e92260df9d","value_repr":"uint32 999",
         "id":"agent_freeze_1","address":)" + std::to_string(health_addr) + R"(,
         "size":4,"type":"uint32","value":999,"interval_ms":20})", "5");
     std::cout << "    Reply: " << freeze_reply << "\n";
