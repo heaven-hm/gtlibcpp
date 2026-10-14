@@ -122,7 +122,8 @@ Result<void> Policy::authorize_with_token(const TargetIdentity& identity,
                     "target identity does not match the authorised manifest");
     }
     const std::uint32_t bits = as_bits(request.capability);
-    if ((bits & as_bits(Capability::write)) && !manifest->allow_write) {
+    if ((bits & as_bits(Capability::write | Capability::freeze | Capability::rollback))
+        && !manifest->allow_write) {
         return deny(ErrorCode::policy_denied,
                     "manifest does not grant write");
     }
