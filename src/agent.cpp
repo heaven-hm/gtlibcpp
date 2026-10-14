@@ -833,6 +833,8 @@ Result<std::string> AgentService::handle(const std::string& request_json) {
     }
     const std::string method = json_get_string(req, "method");
     const std::string request_id = json_get_string(req, "id");
+    const JsonValue* request_id_node = json_get(req, "id");
+    const JsonValue wire_id = request_id_node ? *request_id_node : JsonValue::make_null();
     const JsonValue* params = json_get(req, "params");
     JsonValue empty_params = JsonValue::make_object({});
     const JsonValue& p = params ? *params : empty_params;
@@ -860,8 +862,10 @@ Result<std::string> AgentService::handle(const std::string& request_json) {
         fail(JsonValue::make_object(std::move(err)));
     }
     if (is_error) {
-        return Result<std::string>::success(json_encode(
-            make_error_envelope(request_id, std::move(error))));
+        auto response = make_error_envelope(request_id, std::move(error));
+        for (auto& kv : response.object)
+            if (kv.first == "id") kv.second = wire_id;
+        return Result<std::string>::success(json_encode(std::move(response)));
     }
     bool already_wrapped = false;
     if (result.kind == JsonValue::Kind::object) {
@@ -871,12 +875,14 @@ Result<std::string> AgentService::handle(const std::string& request_json) {
     }
     if (already_wrapped) {
         for (auto& kv : result.object) {
-            if (kv.first == "id") { kv.second = JsonValue::make_string(request_id); break; }
+            if (kv.first == "id") { kv.second = wire_id; break; }
         }
         return Result<std::string>::success(json_encode(std::move(result)));
     }
-    return Result<std::string>::success(json_encode(
-        make_envelope(request_id, std::move(result))));
+    auto response = make_envelope(request_id, std::move(result));
+    for (auto& kv : response.object)
+        if (kv.first == "id") kv.second = wire_id;
+    return Result<std::string>::success(json_encode(std::move(response)));
 }
 
 void AgentService::serve(std::shared_ptr<IAgentTransport> transport) {
