@@ -122,6 +122,7 @@ private:
     std::unordered_map<std::string, PendingApproval> pending_;
     std::atomic<bool>                 stop_flag_{false};
     std::thread                       server_thread_{};
+    std::shared_ptr<IAgentTransport> active_transport_{};
 };
 
 } // namespace gtlibcpp
