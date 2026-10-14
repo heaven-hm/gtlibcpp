@@ -1,4 +1,5 @@
 #include "gtlibcpp/agent.hpp"
+#include "gtlibcpp/sha256.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -488,6 +489,13 @@ JsonValue AgentService::on_preview(const JsonValue& params) {
                               "could not capture the previewed memory state",
                               &initial.error());
     }
+    const std::string digest = sha256_hex(initial.value());
+    if (request.expected_current_hash != digest
+        && request.expected_current_hash != "sha256:" + digest) {
+        return error_response(request.request_id,
+                              static_cast<std::int32_t>(ErrorCode::verification_mismatch),
+                              "expected_current_hash does not match current SHA-256");
+    }
     pa.original_bytes = initial.value();
     pa.issued_at_ms = now_ms();
     pa.expires_at_ms = pa.issued_at_ms + 5 * 60 * 1000;
@@ -595,7 +603,15 @@ JsonValue AgentService::on_verify(const JsonValue& params) {
                               static_cast<std::int32_t>(read_back.error().code),
                               read_back.error().message, &read_back.error());
     }
+    const std::string expected = json_get_string(params, "expected_hash");
+    const std::string digest = sha256_hex(read_back.value());
+    if (!expected.empty() && expected != digest && expected != "sha256:" + digest) {
+        return error_response(json_get_string(params, "request_id"),
+                              static_cast<std::int32_t>(ErrorCode::verification_mismatch),
+                              "expected_hash does not match current SHA-256");
+    }
     JsonObject root;
+    root.emplace_back("sha256", JsonValue::make_string(digest));
     root.emplace_back("hex", JsonValue::make_string(hex_bytes(read_back.value())));
     return JsonValue::make_object(std::move(root));
 }
