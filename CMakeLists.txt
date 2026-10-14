@@ -40,6 +40,7 @@ target_include_directories(gtlibcpp_core
 )
 set_target_properties(gtlibcpp_core PROPERTIES
     POSITION_INDEPENDENT_CODE ON
+    EXPORT_NAME core
 )
 add_library(gtlibcpp::core ALIAS gtlibcpp_core)
 
@@ -48,6 +49,7 @@ if(WIN32)
         src/windows_backend.cpp
         src/named_pipe_transport.cpp
     )
+    set_target_properties(gtlibcpp_win32 PROPERTIES EXPORT_NAME win32)
     target_include_directories(gtlibcpp_win32
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
