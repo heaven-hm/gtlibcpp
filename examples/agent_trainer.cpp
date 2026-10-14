@@ -177,10 +177,10 @@ int main(int argc, char** argv) {
         if (direct_rpc) {
             // Crucial: do not expose unsafe write/freeze/kill-switch handlers
             // through this agent-facing example while policy fixes are pending.
-            const auto tool_name = method == "read" ? "gt_read"
-                                 : method == "resolve" ? "gt_resolve"
-                                 : method == "inspect" ? "gt_inspect"
-                                 : method == "status" ? "gt_status" : "";
+            const std::string tool_name = method == "read" ? "gt_read"
+                                        : method == "resolve" ? "gt_resolve"
+                                        : method == "inspect" ? "gt_inspect"
+                                        : method == "status" ? "gt_status" : "";
             if (tool_name.empty() || !validate(tool_name, p)) {
                 response = rpc_error(*id, -32601, "Method unavailable in read-only trainer");
             } else {

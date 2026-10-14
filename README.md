@@ -38,18 +38,18 @@ Header: [`include/gtlibcpp/memory_session.hpp`](include/gtlibcpp/memory_session.
 | Method Signature | Return Type | Description |
 |------------------|-------------|-------------|
 | `MemorySession(std::shared_ptr<IMemoryBackend> backend)` | Constructor | Creates a memory session bound to an explicit memory backend. |
-| `identity() const` | `const TargetIdentity&` | Retrieves target metadata (PID, path, start time, architecture, SHA-256). |
+| `identity() const noexcept` | `const TargetIdentity&` | Retrieves target metadata (PID, path, start time, architecture, SHA-256). |
 | `is_alive() const noexcept` | `bool` | Checks if the session backend is currently attached and responsive. |
 | `read<T>(Address address)` | `Result<T>` | Reads a typed primitive value (`uint32_t`, `float`, etc.) from target address. |
-| `write<T>(Address address, const T& value)` | `Result<void>` | Writes a typed value directly to the specified target address. |
+| `write<T>(Address address, const T& value)` | `Result<std::size_t>` | Writes a typed value directly to the specified target address. |
 | `read_bytes(Address address, std::size_t size)` | `Result<std::vector<uint8_t>>` | Reads an exact byte buffer of arbitrary length from target memory. |
-| `write_bytes(Address address, const std::vector<uint8_t>& data)` | `Result<void>` | Writes a sequence of bytes directly into target process memory. |
+| `write_bytes(Address address, const std::vector<uint8_t>& data)` | `Result<std::size_t>` | Writes a sequence of bytes directly into target process memory. |
 | `resolve_pointer_chain(Address base_address, const std::vector<Address>& offsets)` | `Result<Address>` | Traverses multi-level pointer chains according to target architecture. |
-| `read_pointer<T>(Address base_address, const std::vector<Address>& offsets)` | `Result<T>` | Resolves a pointer chain and reads the typed value at the terminal address. |
-| `write_pointer<T>(Address base_address, const std::vector<Address>& offsets, const T& value)` | `Result<void>` | Resolves a pointer chain and writes a typed value to the target address. |
-| `read_string(Address address, std::size_t max_length)` | `Result<std::string>` | Reads a bounded, null-terminated string safely checking buffer capacity. |
-| `write_string(Address address, const std::string& str)` | `Result<void>` | Writes a string with null-terminator into target memory. |
-| `compare_and_write(Address address, const std::vector<uint8_t>& expected, const std::vector<uint8_t>& desired)` | `Result<void>` | Atomic compare-before-write: verifies current memory before applying change. |
+| `read_offsets<T>(Address base, const std::vector<Address>& offsets)` | `Result<BatchResult>` | Reads typed values across multiple structured offsets in a single batch. |
+| `write_offsets<T>(Address base, const std::vector<Address>& offsets, const T& val)` | `Result<BatchResult>` | Writes typed values across multiple offsets with atomic rollback on error. |
+| `read_string(Address address, std::size_t capacity, bool require_nul = true)` | `Result<BoundedString>` | Reads a bounded string safely validating UTF-8 and capacity. |
+| `write_string(Address address, const BoundedString& str, std::size_t capacity)` | `Result<std::size_t>` | Writes a BoundedString with null-terminator into target memory. |
+| `compare_write_verify<T>(Address address, const T& value)` | `Result<bool>` | Atomic compare-before-write: verifies target memory before and after applying change. |
 
 ### 2. Freeze & Worker Management (`gtlibcpp::FreezeManager`)
 Header: [`include/gtlibcpp/freeze.hpp`](include/gtlibcpp/freeze.hpp)
@@ -60,7 +60,7 @@ Header: [`include/gtlibcpp/freeze.hpp`](include/gtlibcpp/freeze.hpp)
 | `freeze(FreezeRequest request)` | `Result<void>` | Starts a background worker loop periodically rewriting a target address. |
 | `unfreeze(const std::string& id)` | `Result<void>` | Stops and joins the freeze worker without restoring memory. |
 | `restore(const std::string& id)` | `Result<void>` | Restores captured pre-freeze bytes after the worker has stopped. |
-| `status(const EntryId& id) const` | `Result<FreezeStatus>` | Queries execution status, write count, interval, and state of a worker. |
+| `status(const std::string& id) const` | `Result<FreezeStatus>` | Queries execution status, write count, interval, and state of a worker. |
 | `all_status() const` | `std::vector<FreezeStatus>` | Returns snapshots of all active and inactive freeze workers. |
 | `cancel_all()` | `void` | Signals cancellation and cleanly joins all running freeze threads. |
 

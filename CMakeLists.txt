@@ -57,6 +57,9 @@ if(WIN32)
     )
     target_link_libraries(gtlibcpp_win32 PUBLIC gtlibcpp::core psapi bcrypt)
     target_compile_definitions(gtlibcpp_win32 PRIVATE _WIN32_WINNT=0x0601)
+    set_target_properties(gtlibcpp_win32 PROPERTIES
+        EXPORT_NAME win32
+    )
     add_library(gtlibcpp::win32 ALIAS gtlibcpp_win32)
 endif()
 
