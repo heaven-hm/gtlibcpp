@@ -22,6 +22,7 @@
 #endif
 
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -470,9 +471,8 @@ int main(int argc, char** argv) {
             "build/examples/Release/gtlibcpp_agent_trainer.exe"
         };
         for (const auto& candidate : candidates) {
-            FILE* f = fopen(candidate.c_str(), "rb");
-            if (f) {
-                fclose(f);
+            std::ifstream f(candidate, std::ios::binary);
+            if (f.is_open()) {
                 exe_path = candidate;
                 break;
             }
