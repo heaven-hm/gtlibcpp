@@ -154,6 +154,7 @@ int main(int argc, char** argv) {
     }
 
     gtlibcpp::MemoryBackendPtr backend;
+    (void)architecture;
     if (pid != 0) {
 #ifdef _WIN32
         gtlibcpp::WindowsBackendOptions options{};

@@ -202,7 +202,7 @@ TEST_CASE(e2e_agent_jsonrpc_full_control_plane) {
     std::string preview_out = call("preview", R"({
         "request_id":"op-e2e","target_alias":"CyberAssault","capability":"write",
         "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"abc",
-        "value_repr":"uint32 999"})", "2");
+        "value_hex":"e7030000","value_repr":"uint32 999"})", "2");
     REQUIRE(preview_out.find("\"error\"") == std::string::npos);
 
     // 3. apply
@@ -214,9 +214,17 @@ TEST_CASE(e2e_agent_jsonrpc_full_control_plane) {
     REQUIRE_EQ(session->read<std::uint32_t>(health_addr).value(), static_cast<std::uint32_t>(999));
 
     // 4. freeze
+    std::string freeze_preview = call("preview", R"({
+        "request_id":"op-e2e-freeze","target_alias":"CyberAssault","capability":"freeze",
+        "address":)" + std::to_string(health_addr) + R"(,"size":4,
+        "expected_current_hash":"abc","value_repr":"uint32 999",
+        "id":"e2e_freeze","type":"uint32","value":999,"interval_ms":20})", "4p");
+    REQUIRE(freeze_preview.find("\"error\"") == std::string::npos);
     std::string freeze_out = call("freeze", R"({
+        "request_id":"op-e2e-freeze","target_alias":"CyberAssault","capability":"freeze",
+        "approved":true,"expected_current_hash":"abc","value_repr":"uint32 999",
         "id":"e2e_freeze","address":)" + std::to_string(health_addr) + R"(,
-        "type":"uint32","value":999,"interval_ms":20})", "4");
+        "size":4,"type":"uint32","value":999,"interval_ms":20})", "4");
     REQUIRE(freeze_out.find("\"error\"") == std::string::npos);
 
     // 5. status
