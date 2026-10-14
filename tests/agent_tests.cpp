@@ -13,6 +13,7 @@
 #include "gtlibcpp/memory_session.hpp"
 #include "gtlibcpp/parser.hpp"
 #include "gtlibcpp/policy.hpp"
+#include "gtlibcpp/sha256.hpp"
 #include "gtlibcpp_test.hpp"
 
 namespace {
@@ -117,6 +118,24 @@ GTLIBCPP_TEST(read_failure_is_returned_not_swallowed) {
     GTLIBCPP_REQUIRE(err);
     GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*err, "code"),
                        static_cast<std::int64_t>(gtlibcpp::ErrorCode::read_failed));
+}
+
+GTLIBCPP_TEST(sha256_known_test_vector) {
+    const std::vector<std::uint8_t> bytes{'a', 'b', 'c'};
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::sha256_hex(bytes),
+        std::string("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
+}
+
+GTLIBCPP_TEST(preview_rejects_incorrect_digest) {
+    std::shared_ptr<FakeBackend> backend;
+    auto svc = build_service(backend);
+    auto result = svc->handle(R"({"jsonrpc":"2.0","id":"h","method":"preview","params":{
+        "request_id":"bad-hash","target_alias":"fixture","capability":"write",
+        "address":4096,"size":4,"expected_current_hash":"deadbeef",
+        "value_hex":"11223344","value_repr":"uint32 0x11223344"}})");
+    GTLIBCPP_REQUIRE(result);
+    const auto decoded = gtlibcpp::json_decode(result.value());
+    GTLIBCPP_REQUIRE(decoded && gtlibcpp::json_get(decoded.value(), "error"));
 }
 
 GTLIBCPP_TEST(preview_then_apply_round_trip) {
