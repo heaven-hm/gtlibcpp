@@ -166,6 +166,13 @@ Result<void> Policy::authorize_with_token(const TargetIdentity& identity,
             return deny(ErrorCode::policy_denied,
                         "approval token alias does not match");
         }
+        if (token->capability != request.capability
+            || token->address != request.address || token->size != request.size
+            || token->expected_current_hash != request.expected_current_hash
+            || token->value_repr != request.value_repr) {
+            return deny(ErrorCode::policy_denied,
+                        "mutation differs from previewed approval");
+        }
         const std::int64_t now = now_ms();
         if (now < token->issued_at_ms || now > token->expires_at_ms) {
             return deny(ErrorCode::policy_denied,
