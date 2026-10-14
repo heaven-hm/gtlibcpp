@@ -54,6 +54,9 @@ endif()
 
 # Read-only trainer gateway: MCP over stdio or the existing JSON-RPC API.
 add_executable(gtlibcpp_agent_trainer agent_trainer.cpp)
+if(GTLIBCPP_BUILD_TESTS)
+    add_test(NAME e2e_gtlibcpp_agent_trainer COMMAND gtlibcpp_agent_trainer --self-test)
+endif()
 target_link_libraries(gtlibcpp_agent_trainer PRIVATE ${GTLIBCPP_CORE_TARGET})
 target_include_directories(gtlibcpp_agent_trainer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
