@@ -124,7 +124,7 @@ GTLIBCPP_TEST(preview_then_apply_round_trip) {
     auto svc = build_service(backend);
     const std::string preview = R"({"jsonrpc":"2.0","id":"3","method":"preview","params":{
         "request_id":"op-1","target_alias":"fixture","capability":"write",
-        "address":4096,"size":4,"expected_current_hash":"abc",
+        "address":4096,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119",
         "value_hex":"11223344","value_repr":"uint32 0x11223344"}})";
     auto pr = svc->handle(preview);
     GTLIBCPP_REQUIRE(pr);
@@ -133,7 +133,7 @@ GTLIBCPP_TEST(preview_then_apply_round_trip) {
     GTLIBCPP_REQUIRE(!gtlibcpp::json_get(pj.value(), "error"));
     const std::string apply = R"({"jsonrpc":"2.0","id":"4","method":"apply","params":{
         "request_id":"op-1","target_alias":"fixture","capability":"write",
-        "address":4096,"size":4,"expected_current_hash":"abc","approved":true,
+        "address":4096,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119","approved":true,
         "value_hex":"11223344","value_repr":"uint32 0x11223344"}})";
     auto ar = svc->handle(apply);
     GTLIBCPP_REQUIRE(ar);
@@ -147,12 +147,12 @@ GTLIBCPP_TEST(preview_rejects_changed_apply_payload) {
     auto svc = build_service(backend);
     auto preview = svc->handle(R"({"jsonrpc":"2.0","id":"p","method":"preview","params":{
         "request_id":"immutable-1","target_alias":"fixture","capability":"write",
-        "address":4096,"size":4,"expected_current_hash":"abc",
+        "address":4096,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119",
         "value_hex":"11223344","value_repr":"uint32 0x11223344"}})");
     GTLIBCPP_REQUIRE(preview);
     auto tampered = svc->handle(R"({"jsonrpc":"2.0","id":"a","method":"apply","params":{
         "request_id":"immutable-1","target_alias":"fixture","capability":"write",
-        "address":4096,"size":4,"expected_current_hash":"abc","approved":true,
+        "address":4096,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119","approved":true,
         "value_hex":"55667788","value_repr":"uint32 0x11223344"}})");
     GTLIBCPP_REQUIRE(tampered);
     auto decoded = gtlibcpp::json_decode(tampered.value());
@@ -164,14 +164,14 @@ GTLIBCPP_TEST(preview_rejects_changed_original_bytes) {
     auto svc = build_service(backend);
     auto preview = svc->handle(R"({"jsonrpc":"2.0","id":"p","method":"preview","params":{
         "request_id":"immutable-2","target_alias":"fixture","capability":"write",
-        "address":4096,"size":4,"expected_current_hash":"abc",
+        "address":4096,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119",
         "value_hex":"11223344","value_repr":"uint32 0x11223344"}})");
     GTLIBCPP_REQUIRE(preview);
     const std::uint32_t changed = 123;
     backend->put(4096, &changed, sizeof(changed));
     auto result = svc->handle(R"({"jsonrpc":"2.0","id":"a","method":"apply","params":{
         "request_id":"immutable-2","target_alias":"fixture","capability":"write",
-        "address":4096,"size":4,"expected_current_hash":"abc","approved":true,
+        "address":4096,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119","approved":true,
         "value_hex":"11223344","value_repr":"uint32 0x11223344"}})");
     GTLIBCPP_REQUIRE(result);
     auto decoded = gtlibcpp::json_decode(result.value());
@@ -183,7 +183,7 @@ GTLIBCPP_TEST(apply_without_preview_is_denied) {
     auto svc = build_service(backend);
     const std::string apply = R"({"jsonrpc":"2.0","id":"5","method":"apply","params":{
         "request_id":"op-2","target_alias":"fixture","capability":"write",
-        "address":4096,"size":4,"expected_current_hash":"abc","approved":true,
+        "address":4096,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119","approved":true,
         "value_hex":"01020304","value_repr":"uint32 1"}})";
     auto r = svc->handle(apply);
     GTLIBCPP_REQUIRE(r);
@@ -198,7 +198,7 @@ GTLIBCPP_TEST(kill_switch_engages_and_blocks) {
     GTLIBCPP_REQUIRE(r);
     const std::string apply = R"({"jsonrpc":"2.0","id":"7","method":"apply","params":{
         "request_id":"op-k","target_alias":"fixture","capability":"write",
-        "address":4096,"size":4,"expected_current_hash":"abc","approved":true,
+        "address":4096,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119","approved":true,
         "value_hex":"AABBCCDD","value_repr":"uint32"}})";
     auto denied = svc->handle(apply);
     GTLIBCPP_REQUIRE(denied);
@@ -226,7 +226,7 @@ GTLIBCPP_TEST(unknown_target_is_denied) {
     auto svc = build_service(backend);
     auto r = svc->handle(R"({"jsonrpc":"2.0","id":"8","method":"preview","params":{
         "request_id":"op-z","target_alias":"not-listed","capability":"write",
-        "address":4096,"size":4,"expected_current_hash":"abc","value_repr":"uint32"}})");
+        "address":4096,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119","value_repr":"uint32"}})");
     auto j = gtlibcpp::json_decode(r.value());
     GTLIBCPP_REQUIRE(gtlibcpp::json_get(j.value(), "error"));
 }
@@ -241,14 +241,14 @@ GTLIBCPP_TEST(freeze_and_status_round_trip) {
     GTLIBCPP_REQUIRE(blocked_json && gtlibcpp::json_get(blocked_json.value(), "error"));
     auto preview = svc->handle(R"({"jsonrpc":"2.0","id":"8p","method":"preview","params":{
         "request_id":"freeze-approval-1","target_alias":"fixture","capability":"freeze",
-        "address":8192,"size":4,"expected_current_hash":"abc","value_repr":"uint32 99",
+        "address":8192,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119","value_repr":"uint32 99",
         "id":"freeze-1","type":"uint32","value":99,"interval_ms":20}})");
     GTLIBCPP_REQUIRE(preview);
     auto preview_json = gtlibcpp::json_decode(preview.value());
     GTLIBCPP_REQUIRE(preview_json && !gtlibcpp::json_get(preview_json.value(), "error"));
     auto fr = svc->handle(R"({"jsonrpc":"2.0","id":"9","method":"freeze","params":{
         "request_id":"freeze-approval-1","target_alias":"fixture","capability":"freeze",
-        "approved":true,"expected_current_hash":"abc","value_repr":"uint32 99",
+        "approved":true,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119","value_repr":"uint32 99",
         "id":"freeze-1","address":8192,"size":4,"type":"uint32","value":99,"interval_ms":20}})");
     GTLIBCPP_REQUIRE(fr);
     std::this_thread::sleep_for(std::chrono::milliseconds(80));
