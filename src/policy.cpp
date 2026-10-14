@@ -32,8 +32,7 @@ std::string cap_to_string(Capability c) {
 bool TargetManifest::matches(const TargetIdentity& id) const noexcept {
     if (id.empty()) return false;
     if (id.image_path != image_path) return false;
-    if (!image_sha256.empty() && !id.image_sha256.empty()
-        && id.image_sha256 != image_sha256) {
+    if (!image_sha256.empty() && id.image_sha256 != image_sha256) {
         return false;
     }
     if (!architecture.empty()) {
@@ -48,6 +47,7 @@ RateLimiter::RateLimiter(std::size_t max_per_minute)
 
 Result<void> RateLimiter::allow(const std::string& alias) {
     const std::int64_t now = now_ms();
+    std::lock_guard<std::mutex> lock(mutex_);
     auto& window = windows_[alias];
     if (window.window_start_ms == 0
         || now - window.window_start_ms >= 60'000) {
