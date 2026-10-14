@@ -122,7 +122,7 @@ GTLIBCPP_TEST(preview_then_apply_round_trip) {
     const std::string preview = R"({"jsonrpc":"2.0","id":"3","method":"preview","params":{
         "request_id":"op-1","target_alias":"fixture","capability":"write",
         "address":4096,"size":4,"expected_current_hash":"abc",
-        "value_repr":"uint32 0x11223344"}})";
+        "value_hex":"11223344","value_repr":"uint32 0x11223344"}})";
     auto pr = svc->handle(preview);
     GTLIBCPP_REQUIRE(pr);
     auto pj = gtlibcpp::json_decode(pr.value());
@@ -180,8 +180,22 @@ GTLIBCPP_TEST(unknown_target_is_denied) {
 GTLIBCPP_TEST(freeze_and_status_round_trip) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
-    auto fr = svc->handle(R"({"jsonrpc":"2.0","id":"9","method":"freeze","params":{
+    auto blocked = svc->handle(R"({"jsonrpc":"2.0","id":"8","method":"freeze","params":{
         "id":"freeze-1","address":8192,"type":"uint32","value":99,"interval_ms":20}})");
+    GTLIBCPP_REQUIRE(blocked);
+    auto blocked_json = gtlibcpp::json_decode(blocked.value());
+    GTLIBCPP_REQUIRE(blocked_json && gtlibcpp::json_get(blocked_json.value(), "error"));
+    auto preview = svc->handle(R"({"jsonrpc":"2.0","id":"8p","method":"preview","params":{
+        "request_id":"freeze-approval-1","target_alias":"fixture","capability":"freeze",
+        "address":8192,"size":4,"expected_current_hash":"abc","value_repr":"uint32 99",
+        "id":"freeze-1","type":"uint32","value":99,"interval_ms":20}})");
+    GTLIBCPP_REQUIRE(preview);
+    auto preview_json = gtlibcpp::json_decode(preview.value());
+    GTLIBCPP_REQUIRE(preview_json && !gtlibcpp::json_get(preview_json.value(), "error"));
+    auto fr = svc->handle(R"({"jsonrpc":"2.0","id":"9","method":"freeze","params":{
+        "request_id":"freeze-approval-1","target_alias":"fixture","capability":"freeze",
+        "approved":true,"expected_current_hash":"abc","value_repr":"uint32 99",
+        "id":"freeze-1","address":8192,"size":4,"type":"uint32","value":99,"interval_ms":20}})");
     GTLIBCPP_REQUIRE(fr);
     std::this_thread::sleep_for(std::chrono::milliseconds(80));
     auto sr = svc->handle(R"({"jsonrpc":"2.0","id":"10","method":"status","params":{"id":"freeze-1"}})");
