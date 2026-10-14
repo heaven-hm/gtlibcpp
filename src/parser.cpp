@@ -331,6 +331,20 @@ bool parse_int64(const std::string& text, std::int64_t& out) {
     }
 }
 
+bool parse_ce_offset(const std::string& text, std::int64_t& out) {
+    if (text.empty()) return false;
+    try {
+        // Cheat Engine Offset nodes contain hexadecimal values without 0x.
+        std::size_t consumed = 0;
+        const auto value = std::stoll(text, &consumed, 16);
+        if (consumed != text.size()) return false;
+        out = value;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 std::vector<int> parse_hotkey_text(const std::string& text) {
     std::vector<int> out;
     std::string cur;
@@ -540,11 +554,11 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
         const XmlNode* offsets_node = find_child(variable, "Offsets");
         if (offsets_node) {
             std::int64_t v = 0;
-            if (parse_int64(offsets_node->text, v)) {
+            if (parse_ce_offset(offsets_node->text, v)) {
                 entry.offsets.push_back(static_cast<Address>(v));
             }
             for (const auto& sub : offsets_node->children) {
-                if (sub.name == "Offset" && parse_int64(sub.text, v)) {
+                if (sub.name == "Offset" && parse_ce_offset(sub.text, v)) {
                     entry.offsets.push_back(static_cast<Address>(v));
                 }
             }
