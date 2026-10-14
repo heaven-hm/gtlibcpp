@@ -124,7 +124,13 @@ int main() {
     auto client = transport_pair->make_client();
     agent->serve(transport_pair->make_server());
 
-    assert(client->send(R"({"jsonrpc":"2.0","id":"10","method":"inspect","params":{}})").ok());
+    auto sent = client->send(R"({"jsonrpc":"2.0","id":"10","method":"inspect","params":{}})");
+    if (!sent) {
+        std::cerr << "Could not send agent inspection request\n";
+        transport_pair->close();
+        agent->stop();
+        return 1;
+    }
     auto stream_reply = client->receive();
     for (int attempt = 0; !stream_reply && attempt < 50; ++attempt) {
         // InProcTransport::receive may return an ordinary 50ms timeout.
