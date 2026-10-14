@@ -206,6 +206,21 @@ GTLIBCPP_TEST(kill_switch_engages_and_blocks) {
     GTLIBCPP_REQUIRE(gtlibcpp::json_get(dj.value(), "error"));
 }
 
+GTLIBCPP_TEST(restore_rpc_and_kill_release_are_denied) {
+    std::shared_ptr<FakeBackend> backend;
+    auto svc = build_service(backend);
+    auto restore = svc->handle(R"({"jsonrpc":"2.0","id":"r","method":"restore","params":{"freeze_id":"freeze-1"}})");
+    GTLIBCPP_REQUIRE(restore);
+    auto restored = gtlibcpp::json_decode(restore.value());
+    GTLIBCPP_REQUIRE(restored && gtlibcpp::json_get(restored.value(), "error"));
+    auto engage = svc->handle(R"({"jsonrpc":"2.0","id":"k","method":"kill_switch","params":{"engage":true}})");
+    GTLIBCPP_REQUIRE(engage);
+    auto release = svc->handle(R"({"jsonrpc":"2.0","id":"u","method":"kill_switch","params":{"engage":false}})");
+    GTLIBCPP_REQUIRE(release);
+    auto released = gtlibcpp::json_decode(release.value());
+    GTLIBCPP_REQUIRE(released && gtlibcpp::json_get(released.value(), "error"));
+}
+
 GTLIBCPP_TEST(unknown_target_is_denied) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
