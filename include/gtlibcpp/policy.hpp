@@ -75,6 +75,7 @@ struct ApprovalToken {
     std::string expected_current_hash{};
     std::string value_repr{};
     std::string value_hex{};
+    std::vector<std::uint8_t> original_bytes{};
     std::string freeze_id{};
     std::string freeze_type{};
     std::int64_t freeze_value{0};
