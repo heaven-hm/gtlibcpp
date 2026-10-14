@@ -54,7 +54,7 @@ On Windows, pass an explicit authorized target PID to the same executable:
 .\build\examples\Release\gtlibcpp_agent_trainer.exe --pid=1234 --arch=x86 --image-path=C:\Games\MyGame\game.exe
 ```
 
-For a 64-bit process, choose `--arch=x64`. The PID and image path are examples, not auto-discovered values. `--pid` mode opens the process with `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION` only; it does not grant memory writes. The `--image-path` is currently descriptive metadata for the backend, **not an independently verified binding between the PID and executable**. Use this only on processes you own or are authorized to inspect.
+For a 64-bit process, choose `--arch=x64`. The PID and image path are examples, not auto-discovered values. `--pid` mode opens the process with `PROCESS_VM_READ | PROCESS_QUERY_INFORMATION` only; it does not grant memory writes. The backend now queries the actual executable path and architecture from the opened process handle, and computes its image hash from that discovered path; caller-provided `--image-path`/`--arch` values are not trusted as process identity. This mode still requires you to choose an authorized PID. Use this only on processes you own or are authorized to inspect.
 
 To configure an MCP client for a real process, use the same executable and pass `--pid=1234`, `--arch=x86`, and `--image-path=C:\Games\MyGame\game.exe` in the server's `args` array. Both simulated and real-process modes keep the same read-only tool allowlist. There is no network listener.
 
