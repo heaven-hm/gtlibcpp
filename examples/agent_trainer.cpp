@@ -7,8 +7,12 @@
 #include "gtlibcpp/parser.hpp"
 #include "gtlibcpp/policy.hpp"
 #include "simulated_game.hpp"
+#ifdef _WIN32
+#include "gtlibcpp/windows_backend.hpp"
+#endif
 
 #include <cstdint>
+#include <limits>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -120,13 +124,56 @@ JsonValue tool_call(AgentService& agent, const JsonValue& params) {
 int main(int argc, char** argv) {
     const bool direct_rpc = argc == 2 && std::string(argv[1]) == "--json-rpc";
     const bool self_test = argc == 2 && std::string(argv[1]) == "--self-test";
-    if (argc > 1 && !direct_rpc && !self_test) {
-        std::cerr << "Usage: gtlibcpp_agent_trainer [--json-rpc]\n";
-        return 2;
+    std::uint32_t pid = 0;
+    gtlibcpp::Architecture architecture = gtlibcpp::Architecture::unknown;
+    std::string image_path;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg(argv[i]);
+        if (arg == "--json-rpc" || arg == "--self-test") continue;
+        try {
+            if (arg.rfind("--pid=", 0) == 0) {
+                std::size_t used = 0;
+                const auto parsed = std::stoull(arg.substr(6), &used, 10);
+                if (used != arg.size() - 6 || parsed == 0
+                    || parsed > (std::numeric_limits<std::uint32_t>::max)()) return 2;
+                pid = static_cast<std::uint32_t>(parsed);
+            } else if (arg.rfind("--image-path=", 0) == 0) {
+                image_path = arg.substr(13);
+            } else if (arg == "--arch=x86") {
+                architecture = gtlibcpp::Architecture::x86;
+            } else if (arg == "--arch=x64") {
+                architecture = gtlibcpp::Architecture::x64;
+            } else {
+                std::cerr << "Usage: gtlibcpp_agent_trainer [--json-rpc] [--pid=N --arch=x86|x64 --image-path=PATH]\n";
+                return 2;
+            }
+        } catch (...) {
+            std::cerr << "Invalid PID or argument\n";
+            return 2;
+        }
     }
-    // Demo-only process: no PID attachment, no writes, no elevated privileges.
-    auto game = std::make_shared<gtlibcpp::demo::SimulatedGameProcess>();
-    auto session = std::make_shared<gtlibcpp::MemorySession>(game);
+
+    gtlibcpp::MemoryBackendPtr backend;
+    if (pid != 0) {
+#ifdef _WIN32
+        gtlibcpp::WindowsBackendOptions options{};
+        options.pid = pid;
+        options.architecture = architecture;
+        options.image_path = image_path;
+        options.read_only = true; // Never request PROCESS_VM_WRITE.
+        backend = gtlibcpp::make_windows_backend(options);
+        if (!backend || !backend->is_alive()) {
+            std::cerr << "Cannot attach to requested PID with read-only access\n";
+            return 1;
+        }
+#else
+        std::cerr << "--pid requires Windows\n";
+        return 2;
+#endif
+    } else {
+        backend = std::make_shared<gtlibcpp::demo::SimulatedGameProcess>();
+    }
+    auto session = std::make_shared<gtlibcpp::MemorySession>(backend);
     auto policy = std::make_shared<gtlibcpp::Policy>(
         std::vector<gtlibcpp::TargetManifest>{});
     auto freeze = std::make_shared<gtlibcpp::FreezeManager>(session);
