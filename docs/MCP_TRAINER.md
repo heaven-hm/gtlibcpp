@@ -73,3 +73,7 @@ Both entry points are intentionally restricted to `inspect`, `read`, `resolve`, 
 Real Windows process inspection is available through the optional `--pid` read-only backend. Before enabling any future write-capable MCP tools, independently verify that the PID belongs to the intended executable and enforce explicit operator authorization on every mutation path. Keep the server local with authenticated, access-controlled transports. Add end-to-end security regression tests and Windows CI before enabling MCP mutation operations. Do not directly pass untrusted agent input to write/freeze functions.
 
 This sample is a native C++17 MCP server without a Python/Node runtime. It is intentionally minimal and does not implement HTTP, resources, prompts or dynamic target discovery.
+
+## Mutation protocol note
+
+The general GTLibCpp preview/apply and preview/freeze interfaces require an exact SHA-256 precondition (lowercase hex or `sha256:`-prefixed), a matching preview record, and unchanged target bytes before write. This **does not authenticate** an AI agent or constitute independent operator approval. The MCP trainer deliberately exposes read-only operations even when its backend can inspect a real Windows process.
