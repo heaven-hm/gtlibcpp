@@ -507,10 +507,27 @@ JsonValue AgentService::on_apply(const JsonValue& params) {
                                   static_cast<std::int32_t>(ErrorCode::invalid_string),
                                   "value_hex must have an even number of digits");
         }
+        auto hex_digit = [](char c) -> int {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return -1;
+        };
         for (std::size_t i = 0; i < bytes_str.size(); i += 2) {
-            char buf[3] = {bytes_str[i], bytes_str[i + 1], 0};
-            value_bytes.push_back(static_cast<std::uint8_t>(std::stoul(buf, nullptr, 16)));
+            const int hi = hex_digit(bytes_str[i]);
+            const int lo = hex_digit(bytes_str[i + 1]);
+            if (hi < 0 || lo < 0) {
+                return error_response(request.request_id,
+                                      static_cast<std::int32_t>(ErrorCode::invalid_string),
+                                      "value_hex contains a non-hexadecimal character");
+            }
+            value_bytes.push_back(static_cast<std::uint8_t>((hi << 4) | lo));
         }
+    }
+    if (value_bytes.size() != request.size) {
+        return error_response(request.request_id,
+                              static_cast<std::int32_t>(ErrorCode::invalid_size),
+                              "value_hex byte length must match the authorized size");
     }
     auto w = session_->write_bytes(request.address, value_bytes);
     if (!w) {
