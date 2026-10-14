@@ -99,15 +99,21 @@ TEST_CASE(e2e_freeze_worker_lock_and_restore) {
     auto res = freeze_mgr->freeze(req);
     REQUIRE(res.ok());
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    REQUIRE_EQ(session->read<std::uint32_t>(ammo_addr).value(), static_cast<std::uint32_t>(99));
+    auto wait_for_freeze = [&]() {
+        for (int retry = 0; retry < 100; ++retry) {
+            const auto current = session->read<std::uint32_t>(ammo_addr);
+            if (current && current.value() == 99u) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        return false;
+    };
+    REQUIRE(wait_for_freeze());
 
     // Tamper with memory (simulating shooting)
     REQUIRE(session->write<std::uint32_t>(ammo_addr, 5).ok());
 
     // Worker must intercept and rewrite
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    REQUIRE_EQ(session->read<std::uint32_t>(ammo_addr).value(), static_cast<std::uint32_t>(99));
+    REQUIRE(wait_for_freeze());
 
     // Check status metrics
     auto st = freeze_mgr->status("ammo_freeze");
@@ -201,14 +207,14 @@ TEST_CASE(e2e_agent_jsonrpc_full_control_plane) {
     const gtlibcpp::Address health_addr = gtlibcpp::demo::SimulatedGameProcess::kStatsObjAddr + gtlibcpp::demo::SimulatedGameProcess::kHealthOffset;
     std::string preview_out = call("preview", R"({
         "request_id":"op-e2e","target_alias":"CyberAssault","capability":"write",
-        "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"abc",
+        "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"40e736c02a102a050e1555781b4171020a4279adaa7ed9ca3cc9633a0ade9c37",
         "value_hex":"e7030000","value_repr":"uint32 999"})", "2");
     REQUIRE(preview_out.find("\"error\"") == std::string::npos);
 
     // 3. apply
     std::string apply_out = call("apply", R"({
         "request_id":"op-e2e","target_alias":"CyberAssault","capability":"write",
-        "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"abc",
+        "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"40e736c02a102a050e1555781b4171020a4279adaa7ed9ca3cc9633a0ade9c37",
         "approved":true,"value_hex":"e7030000","value_repr":"uint32 999"})", "3");
     REQUIRE(apply_out.find("\"error\"") == std::string::npos);
     REQUIRE_EQ(session->read<std::uint32_t>(health_addr).value(), static_cast<std::uint32_t>(999));
@@ -217,12 +223,12 @@ TEST_CASE(e2e_agent_jsonrpc_full_control_plane) {
     std::string freeze_preview = call("preview", R"({
         "request_id":"op-e2e-freeze","target_alias":"CyberAssault","capability":"freeze",
         "address":)" + std::to_string(health_addr) + R"(,"size":4,
-        "expected_current_hash":"abc","value_repr":"uint32 999",
+        "expected_current_hash":"d8c85b9b0590a3ea8618fca78dd2451ac34658cdbb9bf2bb065564e92260df9d","value_repr":"uint32 999",
         "id":"e2e_freeze","type":"uint32","value":999,"interval_ms":20})", "4p");
     REQUIRE(freeze_preview.find("\"error\"") == std::string::npos);
     std::string freeze_out = call("freeze", R"({
         "request_id":"op-e2e-freeze","target_alias":"CyberAssault","capability":"freeze",
-        "approved":true,"expected_current_hash":"abc","value_repr":"uint32 999",
+        "approved":true,"expected_current_hash":"d8c85b9b0590a3ea8618fca78dd2451ac34658cdbb9bf2bb065564e92260df9d","value_repr":"uint32 999",
         "id":"e2e_freeze","address":)" + std::to_string(health_addr) + R"(,
         "size":4,"type":"uint32","value":999,"interval_ms":20})", "4");
     REQUIRE(freeze_out.find("\"error\"") == std::string::npos);
@@ -242,7 +248,7 @@ TEST_CASE(e2e_agent_jsonrpc_full_control_plane) {
     // 8. blocked mutation under kill switch
     std::string blocked_out = call("apply", R"({
         "request_id":"op-blocked","target_alias":"CyberAssault","capability":"write",
-        "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"abc",
+        "address":)" + std::to_string(health_addr) + R"(,"size":4,"expected_current_hash":"d8c85b9b0590a3ea8618fca78dd2451ac34658cdbb9bf2bb065564e92260df9d",
         "approved":true,"value_hex":"00000000","value_repr":"uint32 0"})", "8");
     REQUIRE(blocked_out.find("\"error\"") != std::string::npos);
 
