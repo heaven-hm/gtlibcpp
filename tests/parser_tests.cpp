@@ -45,6 +45,23 @@ GTLIBCPP_TEST(parses_simple_uint_entry) {
     GTLIBCPP_REQUIRE(r.value().unsupported_entries.empty());
 }
 
+GTLIBCPP_TEST(parses_unprefixed_hex_addresses_and_offsets) {
+    CheatTableParser parser;
+    const std::string xml = R"(<CheatTable><CheatEntries><CheatEntry>
+      <ID>91</ID>
+      <Variable><Type>4 Bytes</Type><Address>00BC2E2C</Address>
+      <Offsets><Offset>7CC</Offset><Offset>EC</Offset></Offsets></Variable>
+    </CheatEntry></CheatEntries></CheatTable>)";
+    auto result = parser.parse_string(xml);
+    GTLIBCPP_REQUIRE(result);
+    GTLIBCPP_REQUIRE_EQ(result.value().entries.size(), 1u);
+    const auto& e = result.value().entries[0];
+    GTLIBCPP_REQUIRE_EQ(e.address, 0x00BC2E2Cu);
+    GTLIBCPP_REQUIRE_EQ(e.offsets.size(), 2u);
+    GTLIBCPP_REQUIRE_EQ(e.offsets[0], 0x7CCu);
+    GTLIBCPP_REQUIRE_EQ(e.offsets[1], 0xECu);
+}
+
 GTLIBCPP_TEST(preserves_multiple_hotkeys) {
     CheatTableParser parser;
     const std::string xml = R"(<?xml version="1.0"?>
