@@ -601,21 +601,12 @@ JsonValue AgentService::on_verify(const JsonValue& params) {
 }
 
 JsonValue AgentService::on_restore(const JsonValue& params) {
-    const std::string id = json_get_string(params, "freeze_id");
-    if (id.empty()) {
-        return error_response(json_get_string(params, "request_id"),
-                              static_cast<std::int32_t>(ErrorCode::invalid_entry_id),
-                              "freeze_id is required");
-    }
-    auto r = freeze_->restore(id);
-    if (!r) {
-        return error_response(json_get_string(params, "request_id"),
-                              static_cast<std::int32_t>(r.error().code),
-                              r.error().message, &r.error());
-    }
-    JsonObject root;
-    root.emplace_back("restored", JsonValue::make_bool(true));
-    return JsonValue::make_object(std::move(root));
+    // An RPC caller must not be able to bypass mutation approval by restoring
+    // a previously captured value. The trusted embedder can call
+    // FreezeManager::restore directly after its own operator authorization.
+    return error_response(json_get_string(params, "request_id"),
+                          static_cast<std::int32_t>(ErrorCode::policy_denied),
+                          "restore RPC disabled until rollback authorization is implemented");
 }
 
 JsonValue AgentService::on_freeze(const JsonValue& params) {
@@ -776,7 +767,11 @@ JsonValue AgentService::on_kill_switch(const JsonValue& params) {
         policy_->set_kill_switch_reason(json_get_string(params, "reason", "operator"));
         freeze_->cancel_all(); // Stop ongoing periodic mutations as well.
     } else {
-        const_cast<KillSwitch&>(policy_->kill_switch()).release();
+        // A remote/untrusted client cannot clear an emergency stop.
+        // Trusted host code must explicitly release Policy::kill_switch().
+        return error_response(json_get_string(params, "request_id"),
+                              static_cast<std::int32_t>(ErrorCode::policy_denied),
+                              "kill switch release requires trusted host authorization");
     }
     JsonObject root;
     root.emplace_back("engaged", JsonValue::make_bool(policy_->kill_switch().engaged()));
