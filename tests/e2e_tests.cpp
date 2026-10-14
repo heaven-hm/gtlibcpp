@@ -57,7 +57,7 @@ TEST_CASE(e2e_memory_session_full_lifecycle) {
     const gtlibcpp::Address name_addr = gtlibcpp::demo::SimulatedGameProcess::kStatsObjAddr + gtlibcpp::demo::SimulatedGameProcess::kNameOffset;
     auto name_res = session.read_string(name_addr, 32, false);
     REQUIRE(name_res.ok());
-    std::string current_name(reinterpret_cast<const char*>(name_res.value().bytes().data()));
+    std::string current_name(name_res.value().bytes().begin(), name_res.value().bytes().end());
     REQUIRE_EQ(current_name, std::string("Commander_Shepard"));
 
     std::string new_name = "Vanguard_Hero";
@@ -71,7 +71,7 @@ TEST_CASE(e2e_memory_session_full_lifecycle) {
 
     auto name_after = session.read_string(name_addr, 32, true);
     REQUIRE(name_after.ok());
-    std::string updated_name(reinterpret_cast<const char*>(name_after.value().bytes().data()));
+    std::string updated_name(name_after.value().bytes().begin(), name_after.value().bytes().end());
     REQUIRE_EQ(updated_name, std::string("Vanguard_Hero"));
 
     // Compare and write verify
