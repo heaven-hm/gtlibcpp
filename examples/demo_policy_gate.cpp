@@ -57,9 +57,17 @@ int main() {
     valid_req.approved = true;
 
     // Expired Token
-    gtlibcpp::ApprovalToken expired_token{
-        "req-1", "TacticalGame", 1000, 2000, "sig"
-    };
+    gtlibcpp::ApprovalToken expired_token{};
+    expired_token.request_id = "req-1";
+    expired_token.target_alias = "TacticalGame";
+    expired_token.issued_at_ms = 1000;
+    expired_token.expires_at_ms = 2000;
+    expired_token.capability = valid_req.capability;
+    expired_token.address = valid_req.address;
+    expired_token.size = valid_req.size;
+    expired_token.expected_current_hash = valid_req.expected_current_hash;
+    expired_token.value_repr = valid_req.value_repr;
+    expired_token.signature = "sig";
     auto auth_expired = policy.authorize_with_token(target, valid_req, &expired_token);
     assert(!auth_expired.ok());
     assert(auth_expired.error().code == gtlibcpp::ErrorCode::policy_denied);
@@ -68,9 +76,10 @@ int main() {
     // Fresh Valid Token
     using namespace std::chrono;
     int64_t now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-    gtlibcpp::ApprovalToken fresh_token{
-        "req-1", "TacticalGame", now - 1000, now + 60000, "valid_sig"
-    };
+    auto fresh_token = expired_token;
+    fresh_token.issued_at_ms = now - 1000;
+    fresh_token.expires_at_ms = now + 60000;
+    fresh_token.signature = "valid_sig";
     auto auth_fresh = policy.authorize_with_token(target, valid_req, &fresh_token);
     assert(auth_fresh.ok());
     std::cout << "[+] Valid Approval Token within TTL: GRANTED as expected\n";
