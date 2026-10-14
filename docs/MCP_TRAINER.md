@@ -70,6 +70,6 @@ Both entry points are intentionally restricted to `inspect`, `read`, `resolve`, 
 
 ## Future production integration
 
-To target real Windows games, replace the simulated backend with `make_windows_backend` after implementing permission-gated target selection and enforcing policy checks on all entry points. Keep the server local with authenticated, access-controlled transports. Add end-to-end security regression tests and Windows CI before enabling MCP mutation operations. Do not directly pass untrusted agent input to write/freeze functions.
+Real Windows process inspection is available through the optional `--pid` read-only backend. Before enabling any future write-capable MCP tools, independently verify that the PID belongs to the intended executable and enforce explicit operator authorization on every mutation path. Keep the server local with authenticated, access-controlled transports. Add end-to-end security regression tests and Windows CI before enabling MCP mutation operations. Do not directly pass untrusted agent input to write/freeze functions.
 
 This sample is a native C++17 MCP server without a Python/Node runtime. It is intentionally minimal and does not implement HTTP, resources, prompts or dynamic target discovery.
