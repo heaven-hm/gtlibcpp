@@ -2,7 +2,8 @@
 
 The production-baseline library ships under `include/gtlibcpp/` and
 `src/`. The legacy `GTLibc.*` files are retained for backwards
-compatibility but are no longer the recommended path.
+compatibility but are no longer the recommended path; see
+[MIGRATION.md](MIGRATION.md) for the upgrade guide.
 
 ## Goals
 
@@ -24,6 +25,12 @@ compatibility but are no longer the recommended path.
 6. The Cheat Engine parser is XML-driven, not regex-driven.
 7. The agent is a separate local-only service.
 8. The policy layer is read-only by default.
+9. Every public method is wrapped in try/catch and converts
+   exceptions into a structured `ErrorCode::internal`; no
+   backend exception escapes into the caller.
+10. Every public method writes one log event via the injected
+    `Logger::set_sink` callback, so a trainer or the agent can
+    audit the trail.
 
 ## Layers
 
@@ -39,7 +46,18 @@ compatibility but are no longer the recommended path.
                  +-----------------------------+
                  |     IMemoryBackend (I/O)    |  <- Windows or Fake
                  +-----------------------------+
+                            |
+                            v
+                  +-------------------+
+                  |  Logger (sink)    |  <- injected function pointer
+                  +-------------------+
 ```
+
+The cross-platform core compiles and tests on macOS, Linux, and
+Windows. The Windows-only backend (`gtlibcpp::gtlibcpp_win32`) ships
+as a separate CMake target that pulls in `psapi` and `bcrypt`, and
+is gated on `WIN32`. The named-pipe transport is also part of
+`gtlibcpp::gtlibcpp_win32`.
 
 ## Build
 
@@ -57,7 +75,7 @@ ctest --test-dir build --output-on-failure
   is 64-bit but the upper 32 bits are zero; `read<std::uintptr_t>`
   reads 4 bytes and `read<std::uint64_t>` reads 8 bytes (the high
   4 bytes will be zero for a 32-bit pointer). The Windows CI
-  matrix exercises the `Win32` (x86) target on MSVC and clang-cl.
+  matrix exercises the `Win32` (x86) target on MSVC.
 * **64-bit (x64) games**: same as above, on a 64-bit Windows host.
   `read<std::uintptr_t>` reads 8 bytes. The Windows CI matrix
   exercises the `x64` target on MSVC and clang-cl.
@@ -72,7 +90,7 @@ ctest --test-dir build --output-on-failure
 * The legacy `GTLibc` API used `DWORD` for every address, which
   silently truncated on x64. The new `Address` type is
   `std::uint64_t` and there is no narrowing anywhere in the core.
-* The policy layer's `TargetIdentity.architecture` is recorded at
+* The policy layer's `TargetIdentity::architecture` is recorded at
   attach time and used by the policy gates; a manifest that
   declares `x86` will not match an x64 process, and vice versa.
 * The JSON-RPC `read`/`write`/`apply` payloads carry addresses as
@@ -83,4 +101,21 @@ ctest --test-dir build --output-on-failure
   `invalid_address`.
 
 The Windows CI matrix (`.github/workflows/windows-ci.yml`) covers
-all four combinations of MSVC and clang-cl on x86 and x64.
+the three supported combinations:
+
+* x64 MSVC (via `ilammy/msvc-dev-cmd@v1`)
+* x64 clang-cl (the bundled clang-cl that ships with the VS
+  install)
+* x86 MSVC (via `ilammy/msvc-dev-cmd@v1` with `arch: x86`)
+
+## See also
+
+* [API.md](API.md) — full public API reference.
+* [POLICY.md](POLICY.md) — manifest, capabilities, approval tokens.
+* [PARSER.md](PARSER.md) — Cheat Engine 7.x subset and fail-closed kinds.
+* [AGENT.md](AGENT.md) — JSON-RPC 2.0 surface and method reference.
+* [EXAMPLES.md](EXAMPLES.md) — end-to-end usage examples.
+* [MIGRATION.md](MIGRATION.md) — moving from the legacy `GTLibc.*`
+  API to `gtlibcpp::*`.
+* [THREAT_MODEL.md](THREAT_MODEL.md) — in-scope threats, assumptions,
+  out-of-scope items.
