@@ -69,6 +69,9 @@ public:
 std::shared_ptr<gtlibcpp::AgentService>
 build_service(std::shared_ptr<FakeBackend>& backend) {
     backend = std::make_shared<FakeBackend>();
+    const std::uint32_t initial = 0;
+    backend->put(4096, &initial, sizeof(initial));
+    backend->put(8192, &initial, sizeof(initial));
     auto session = std::make_shared<gtlibcpp::MemorySession>(backend);
     auto parser  = std::make_shared<gtlibcpp::CheatTableParser>();
     auto freeze  = std::make_shared<gtlibcpp::FreezeManager>(session);
