@@ -318,6 +318,18 @@ GTLIBCPP_TEST(transport_round_trip) {
     svc->stop();
 }
 
+GTLIBCPP_TEST(numeric_jsonrpc_id_is_preserved) {
+    std::shared_ptr<FakeBackend> backend;
+    auto svc = build_service(backend);
+    auto response = svc->handle(R"({"jsonrpc":"2.0","id":42,"method":"inspect","params":{}})");
+    GTLIBCPP_REQUIRE(response);
+    auto json = gtlibcpp::json_decode(response.value());
+    GTLIBCPP_REQUIRE(json);
+    const auto* id = gtlibcpp::json_get(json.value(), "id");
+    GTLIBCPP_REQUIRE(id && id->kind == gtlibcpp::JsonValue::Kind::integer);
+    GTLIBCPP_REQUIRE_EQ(id->integer, 42);
+}
+
 GTLIBCPP_TEST(unknown_method_returns_rpc_error) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
