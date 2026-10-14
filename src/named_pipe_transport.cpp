@@ -233,6 +233,10 @@ public:
             return Result<std::string>::failure(make_error(
                 ErrorCode::internal, e.what(), "NamedPipeClient::receive"));
         }
+        // The server disconnects after every response; drop the stale handle
+        // so the next send() establishes a fresh pipe instance.
+        ::CloseHandle(pipe_);
+        pipe_ = INVALID_HANDLE_VALUE;
         return Result<std::string>::success(std::move(out));
     }
 
