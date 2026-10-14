@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -175,10 +176,6 @@ public:
             if (verify.value() == value) {
                 return Result<T>::success(value);
             }
-            return Result<T>::failure(make_error(
-                ErrorCode::verification_mismatch,
-                "post-write verification did not match the intended value",
-                "compare_write_verify", address, sizeof(T)));
         }
         return Result<T>::failure(make_error(
             ErrorCode::verification_mismatch,
@@ -358,16 +355,29 @@ MemorySession::resolve_pointer_chain(Address base, const std::vector<Address>& o
     }
     Address current = base;
     for (std::size_t step = 0; step < offsets.size(); ++step) {
-        const Address target = current + offsets[step];
-        const auto read_result = read<std::uintptr_t>(target);
-        if (!read_result) {
+        if (offsets[step] > (std::numeric_limits<Address>::max)() - current) {
             return Result<Address>::failure(make_error(
-                read_result.error().code,
-                "pointer chain step " + std::to_string(step) + " failed: " + read_result.error().message,
-                "resolve_pointer_chain", target, sizeof(std::uintptr_t),
-                read_result.error().system_error));
+                ErrorCode::invalid_address, "pointer chain address overflow",
+                "resolve_pointer_chain", current));
         }
-        current = static_cast<Address>(read_result.value());
+        const Address target = current + offsets[step];
+        const Architecture arch = identity().architecture;
+        if (arch != Architecture::x86 && arch != Architecture::x64) {
+            return Result<Address>::failure(make_error(
+                ErrorCode::target_arch_mismatch, "unknown target pointer width",
+                "resolve_pointer_chain", target));
+        }
+        const std::size_t pointer_size = arch == Architecture::x86 ? 4u : 8u;
+        const auto raw = read_bytes(target, pointer_size);
+        if (!raw) {
+            return Result<Address>::failure(make_error(
+                raw.error().code,
+                "pointer chain step " + std::to_string(step) + " failed: " + raw.error().message,
+                "resolve_pointer_chain", target, pointer_size, raw.error().system_error));
+        }
+        std::uint64_t pointer_value = 0;
+        std::memcpy(&pointer_value, raw.value().data(), pointer_size);
+        current = pointer_value;
         if (current == 0) {
             return Result<Address>::failure(make_error(
                 ErrorCode::invalid_address,
