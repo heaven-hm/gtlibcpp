@@ -22,6 +22,8 @@ struct FreezeRequest {
     Address      address{0};
     std::string  type_name{};
     std::uint64_t value_u64{0};
+    double floating_value{0.0};
+    bool has_floating_value{false};
     std::chrono::milliseconds interval{std::chrono::milliseconds(50)};
     std::size_t   size{0};
 };
