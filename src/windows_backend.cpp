@@ -14,9 +14,8 @@ namespace {
 class WindowsBackend final : public IMemoryBackend {
 public:
     explicit WindowsBackend(WindowsBackendOptions options) : options_(std::move(options)) {
-        identity_.pid = options_.pid;
-        identity_.image_path = options_.image_path;
-        identity_.architecture = options_.architecture;
+        // Never trust a caller's claimed image path or architecture as identity.
+        // Both must come from the actual process handle opened below.
         const DWORD access = options_.read_only
             ? PROCESS_VM_READ | PROCESS_QUERY_INFORMATION
             : (options_.desired_access
@@ -25,9 +24,12 @@ public:
                     | PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION));
         handle_ = ::OpenProcess(access, FALSE, options_.pid);
         if (handle_) {
+            identity_.pid = ::GetProcessId(handle_);
             identity_.start_time = query_start_time(handle_);
+            identity_.image_path = query_image_path(handle_);
+            identity_.architecture = query_architecture(handle_);
+            identity_.image_sha256 = query_image_sha256(identity_.image_path);
         }
-        identity_.image_sha256 = query_image_sha256(options_.image_path);
     }
 
     ~WindowsBackend() override {
@@ -108,6 +110,27 @@ public:
     [[nodiscard]] TargetIdentity identity() const override { return identity_; }
 
 private:
+    static std::string query_image_path(HANDLE process) {
+        std::vector<char> buffer(32768, '\0');
+        DWORD length = static_cast<DWORD>(buffer.size());
+        if (!::QueryFullProcessImageNameA(process, 0, buffer.data(), &length)) return {};
+        return std::string(buffer.data(), static_cast<std::size_t>(length));
+    }
+
+    static Architecture query_architecture(HANDLE process) {
+        BOOL wow64 = FALSE;
+        if (!::IsWow64Process(process, &wow64)) return Architecture::unknown;
+        SYSTEM_INFO native{};
+        ::GetNativeSystemInfo(&native);
+        if (native.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64) {
+            return wow64 ? Architecture::x86 : Architecture::x64;
+        }
+        if (native.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL) {
+            return Architecture::x86;
+        }
+        return Architecture::unknown; // Do not assume architecture on ARM hosts.
+    }
+
     static std::uint64_t query_start_time(HANDLE process) {
         if (!process) return 0;
         FILETIME creation{}, exit{}, kernel{}, user{};
