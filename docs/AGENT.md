@@ -46,12 +46,12 @@ the integer.
 | `preview`       | (any)            | Mint an approval token for a subsequent `apply`.              |
 | `apply`         | (any)            | Execute a previously-preapproved mutation.                    |
 | `verify`        | read             | Re-read an address (for post-apply verification).              |
-| `restore`       | rollback         | Rewrite the snapshotted original value at a freeze address.   |
+| `restore`       | rollback         | Currently denied over RPC pending authenticated rollback authorization. |
 | `freeze`        | freeze           | Start a freeze; returns the freeze id.                         |
 | `unfreeze`      | unfreeze         | Stop a freeze without restoring.                               |
 | `status`        | read             | Return freeze status (single or all).                         |
 | `parse`         | parse            | Parse a `.ct` payload; return supported / unsupported / diagnostics. |
-| `kill_switch`   | (operator-only)  | Engage or release the kill switch.                            |
+| `kill_switch`   | (operator-only)  | Engage the kill switch; release requires trusted host code.  |
 
 ### `inspect` (request)
 
@@ -431,3 +431,7 @@ propagates to both ends.
 The `data` field is the stable string form of the code and is
 safe for clients to switch on; the integer `code` may change if
 new error codes are added.
+
+## Current security restriction
+
+The `restore` RPC always returns `policy_denied` pending a proper rollback approval protocol. `kill_switch` with `engage:false` also returns `policy_denied`: only trusted host code may release it. The `freeze` RPC requires a matching preview with `target_alias`, `capability:freeze`, `request_id`, `address`, `size`, `expected_current_hash`, `value_repr`, `id`, `type`, `value`, and `interval_ms`; the freeze call must repeat those fields plus `approved:true`. The service binds preview details and checks that the target bytes are unchanged before mutation. The `expected_current_hash` field is not yet a cryptographically verified digest; do not treat this interface as production-ready for untrusted mutation requests.
