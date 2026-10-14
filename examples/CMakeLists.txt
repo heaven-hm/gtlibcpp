@@ -58,6 +58,9 @@ if(GTLIBCPP_BUILD_TESTS)
     add_test(NAME e2e_gtlibcpp_agent_trainer COMMAND gtlibcpp_agent_trainer --self-test)
 endif()
 target_link_libraries(gtlibcpp_agent_trainer PRIVATE ${GTLIBCPP_CORE_TARGET})
+if(WIN32)
+    target_link_libraries(gtlibcpp_agent_trainer PRIVATE ${GTLIBCPP_WIN32_TARGET})
+endif()
 target_include_directories(gtlibcpp_agent_trainer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
