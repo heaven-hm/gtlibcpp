@@ -51,6 +51,11 @@ public:
                 ErrorCode::not_connected, "no client connected",
                 "NamedPipeServer::send"));
         }
+        if (json.size() > 1024u * 1024u) {
+            return Result<void>::failure(make_error(
+                ErrorCode::invalid_size, "outgoing frame exceeds 1 MiB",
+                "NamedPipe::send"));
+        }
         std::uint32_t magic = kProtocolMagic;
         std::uint32_t len = static_cast<std::uint32_t>(json.size());
         try {
@@ -58,10 +63,18 @@ public:
             write_all(pipe_, &len, sizeof(len));
             write_all(pipe_, json.data(), json.size());
         } catch (const std::exception& e) {
+            ::DisconnectNamedPipe(pipe_);
+            ::CloseHandle(pipe_);
+            pipe_ = INVALID_HANDLE_VALUE;
             return Result<void>::failure(make_error(
                 ErrorCode::internal, e.what(),
                 "NamedPipeServer::send"));
         }
+        // Keep the client connected through the response; rearm afterwards.
+        ::FlushFileBuffers(pipe_);
+        ::DisconnectNamedPipe(pipe_);
+        ::CloseHandle(pipe_);
+        pipe_ = INVALID_HANDLE_VALUE;
         return Result<void>::success();
     }
 
@@ -97,9 +110,10 @@ public:
                 ErrorCode::internal, e.what(),
                 "NamedPipeServer::receive"));
         }
-        if (magic != kProtocolMagic) {
+        if (magic != kProtocolMagic || len > 1024u * 1024u) {
+            close();
             return Result<std::string>::failure(make_error(
-                ErrorCode::parse_failed, "bad protocol magic",
+                ErrorCode::parse_failed, "invalid or oversized pipe frame",
                 "NamedPipeServer::receive"));
         }
         std::string out;
@@ -111,11 +125,7 @@ public:
                 ErrorCode::internal, e.what(),
                 "NamedPipeServer::receive"));
         }
-        // Re-arm for the next client.
-        std::lock_guard<std::mutex> lock(mutex_);
-        ::DisconnectNamedPipe(pipe_);
-        ::CloseHandle(pipe_);
-        pipe_ = INVALID_HANDLE_VALUE;
+        // AgentService::serve sends the response before this connection is closed.
         return Result<std::string>::success(std::move(out));
     }
 
@@ -209,9 +219,10 @@ public:
             return Result<std::string>::failure(make_error(
                 ErrorCode::internal, e.what(), "NamedPipeClient::receive"));
         }
-        if (magic != kProtocolMagic) {
+        if (magic != kProtocolMagic || len > 1024u * 1024u) {
+            close();
             return Result<std::string>::failure(make_error(
-                ErrorCode::parse_failed, "bad protocol magic",
+                ErrorCode::parse_failed, "invalid or oversized pipe frame",
                 "NamedPipeClient::receive"));
         }
         std::string out;
