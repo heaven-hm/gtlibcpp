@@ -66,7 +66,7 @@ Use `gtlibcpp_agent_trainer --json-rpc` to accept its existing JSON-RPC methods 
 {"jsonrpc":"2.0","id":"health","method":"read","params":{"address":12884901904,"size":4}}
 ```
 
-Both entry points are intentionally restricted to `inspect`, `read`, `resolve`, and `status`. Address and offset arguments are nonnegative JSON integers; reads must be 1–256 bytes and pointer chains at most 16 offsets. MCP write, apply, preview, freeze, unfreeze, restore and kill-switch operations are **not available** from this gateway. Existing unrestricted `AgentService` handlers elsewhere in the repository still need security fixes; this example does not certify them for deployment.
+Both entry points are intentionally restricted to `inspect`, `read`, `resolve`, and `status`. Address and offset arguments are nonnegative JSON integers; reads must be 1–256 bytes and pointer chains at most 16 offsets. MCP write, apply, preview, freeze, unfreeze, restore and kill-switch operations are **not available** from this gateway. The general `AgentService` mutation handlers are separately restricted and still require further security validation. This gateway does not expose them to agents.
 
 ## Future production integration
 
