@@ -555,6 +555,52 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
         if (type_node2 && !type_node2->text.empty()) type_text = type_node2->text;
         const XmlNode* display = find_child(variable, "DisplayAs");
         if (display) type_text = display->text;
+
+        std::string type_text_lower = type_text;
+        std::transform(type_text_lower.begin(), type_text_lower.end(), type_text_lower.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        // Fail-closed checks for the dangerous CE entry kinds.
+        if (find_child(child, "AssemblerScript")
+            || find_child(child, "AutoAssembler")
+            || find_child(child, "AA")
+            || find_child(child, "AAScript")
+            || find_child(child, "LuaScript")
+            || type_text_lower.find("auto assembler") != std::string::npos
+            || type_text_lower.find("lua") != std::string::npos) {
+            entry.auto_assembler = true;
+            entry.failure_reason =
+                "Auto Assembler / Lua entries are not supported in this build";
+            table.unsupported_entries.push_back(entry);
+            table.diagnostics.push_back(
+                "entry " + entry.id.value + ": Auto Assembler skipped");
+            continue;
+        }
+        if (find_child(child, "Inject")
+            || find_child(child, "LoadLibrary")
+            || find_child(child, "ShellExecute")
+            || find_child(child, "DllInjection")) {
+            entry.shell_command = true;
+            entry.failure_reason = "DLL/shell injection is not supported";
+            table.unsupported_entries.push_back(entry);
+            table.diagnostics.push_back(
+                "entry " + entry.id.value + ": shell/inject skipped");
+            continue;
+        }
+        // CE 7.x supports a raw byte array form (<ByteArray> or
+        // <Bytes><Byte>0x90</Byte>...</Bytes>). The new core only
+        // supports typed reads; raw byte writes are intentionally
+        // out of scope for issue #1 and reported as unsupported.
+        if (find_child(child, "ByteArray")
+            || find_child(child, "Bytes")) {
+            entry.raw_byte_write = true;
+            entry.failure_reason = "raw byte-array writes are not supported";
+            table.unsupported_entries.push_back(entry);
+            table.diagnostics.push_back(
+                "entry " + entry.id.value + ": raw byte-array skipped");
+            continue;
+        }
+
         // CE 7.x also uses <ShowAsSigned>0</ShowAsSigned> to override
         // the default sign of an unsigned type.
         const XmlNode* show_signed = find_child(child, "ShowAsSigned");
@@ -595,45 +641,6 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
                         " has RealAddress=0x" + it->second);
                 }
             }
-        }
-
-        // Fail-closed checks for the dangerous CE entry kinds.
-        if (find_child(child, "AssemblerScript")
-            || find_child(child, "AutoAssembler")
-            || find_child(child, "AA")
-            || find_child(child, "AAScript")
-            || find_child(child, "LuaScript")) {
-            entry.auto_assembler = true;
-            entry.failure_reason =
-                "Auto Assembler / Lua entries are not supported in this build";
-            table.unsupported_entries.push_back(entry);
-            table.diagnostics.push_back(
-                "entry " + entry.id.value + ": Auto Assembler skipped");
-            continue;
-        }
-        if (find_child(child, "Inject")
-            || find_child(child, "LoadLibrary")
-            || find_child(child, "ShellExecute")
-            || find_child(child, "DllInjection")) {
-            entry.shell_command = true;
-            entry.failure_reason = "DLL/shell injection is not supported";
-            table.unsupported_entries.push_back(entry);
-            table.diagnostics.push_back(
-                "entry " + entry.id.value + ": shell/inject skipped");
-            continue;
-        }
-        // CE 7.x supports a raw byte array form (<ByteArray> or
-        // <Bytes><Byte>0x90</Byte>...</Bytes>). The new core only
-        // supports typed reads; raw byte writes are intentionally
-        // out of scope for issue #1 and reported as unsupported.
-        if (find_child(child, "ByteArray")
-            || find_child(child, "Bytes")) {
-            entry.raw_byte_write = true;
-            entry.failure_reason = "raw byte-array writes are not supported";
-            table.unsupported_entries.push_back(entry);
-            table.diagnostics.push_back(
-                "entry " + entry.id.value + ": raw byte-array skipped");
-            continue;
         }
 
         const XmlNode* hotkeys_node = find_child(child, "Hotkeys");

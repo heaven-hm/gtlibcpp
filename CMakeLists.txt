@@ -11,6 +11,7 @@ set(CMAKE_EXPORT_COMPORTS ON)
 
 option(GTLIBCPP_BUILD_TESTS "Build the cross-platform regression test suite" ON)
 option(GTLIBCPP_BUILD_DEMOS  "Build the demo trainers" OFF)
+option(GTLIBCPP_BUILD_EXAMPLES "Build the end-to-end demo projects" ON)
 option(GTLIBCPP_ENABLE_WERROR "Treat warnings as errors" ON)
 
 if(MSVC)
@@ -115,6 +116,18 @@ if(GTLIBCPP_BUILD_TESTS)
     add_executable(gtlibcpp_security_tests tests/security_tests.cpp)
     target_link_libraries(gtlibcpp_security_tests PRIVATE gtlibcpp::core)
     add_test(NAME gtlibcpp_security_tests COMMAND gtlibcpp_security_tests)
+
+    add_executable(gtlibcpp_e2e_tests tests/e2e_tests.cpp)
+    target_link_libraries(gtlibcpp_e2e_tests PRIVATE gtlibcpp::core)
+    target_include_directories(gtlibcpp_e2e_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/examples
+    )
+    add_test(NAME gtlibcpp_e2e_tests COMMAND gtlibcpp_e2e_tests)
+endif()
+
+if(GTLIBCPP_BUILD_EXAMPLES)
+    add_subdirectory(examples)
 endif()
 
 if(GTLIBCPP_BUILD_DEMOS)
