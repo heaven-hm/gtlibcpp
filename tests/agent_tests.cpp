@@ -1,5 +1,6 @@
 // Agent-service regression tests
 #include <chrono>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <string>
@@ -275,6 +276,33 @@ GTLIBCPP_TEST(freeze_and_status_round_trip) {
     GTLIBCPP_REQUIRE(sr);
     auto ur = svc->handle(R"({"jsonrpc":"2.0","id":"11","method":"unfreeze","params":{"id":"freeze-1"}})");
     GTLIBCPP_REQUIRE(ur);
+}
+
+GTLIBCPP_TEST(freeze_float_preserves_fractional_value) {
+    std::shared_ptr<FakeBackend> backend;
+    auto svc = build_service(backend);
+    const auto preview = svc->handle(R"({"jsonrpc":"2.0","id":"pf","method":"preview","params":{
+        "request_id":"float-fr","target_alias":"fixture","capability":"freeze",
+        "address":8192,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119",
+        "value_repr":"float 75.5","id":"float-fr","type":"float","value":75.5,"interval_ms":10}})");
+    GTLIBCPP_REQUIRE(preview);
+    auto p = gtlibcpp::json_decode(preview.value());
+    GTLIBCPP_REQUIRE(p && !gtlibcpp::json_get(p.value(), "error"));
+    auto start = svc->handle(R"({"jsonrpc":"2.0","id":"f","method":"freeze","params":{
+        "request_id":"float-fr","target_alias":"fixture","capability":"freeze","approved":true,
+        "address":8192,"size":4,"expected_current_hash":"df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119",
+        "value_repr":"float 75.5","id":"float-fr","type":"float","value":75.5,"interval_ms":10}})");
+    GTLIBCPP_REQUIRE(start);
+    auto j = gtlibcpp::json_decode(start.value());
+    GTLIBCPP_REQUIRE(j && !gtlibcpp::json_get(j.value(), "error"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    auto end = svc->handle(R"({"jsonrpc":"2.0","id":"u","method":"unfreeze","params":{"id":"float-fr"}})");
+    GTLIBCPP_REQUIRE(end);
+    auto bytes = backend->read(8192, 4);
+    GTLIBCPP_REQUIRE(bytes);
+    float value = 0.0f;
+    std::memcpy(&value, bytes.value().data(), sizeof(value));
+    GTLIBCPP_REQUIRE_EQ(value, 75.5f);
 }
 
 GTLIBCPP_TEST(transport_round_trip) {
