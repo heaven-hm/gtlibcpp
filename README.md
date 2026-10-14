@@ -21,7 +21,7 @@ The legacy `GTLibc` Win32 trainer surface is preserved in `GTLibc.hpp` / `GTLibc
 * **Architecture-Safe Addresses**: 64-bit `Address` type (`std::uint64_t`) safely addressing both 32-bit and 64-bit targets. Pointer-chain resolution automatically adapts dereference width based on the target `Architecture`.
 * **RAII Memory Sessions**: `MemorySession` owns the backend target connection, guarantees strict RAII lifetime, forbids unsafe copying and global state, and ensures deterministic cleanup.
 * **Safe Strings & Buffers**: `BoundedString` enforces explicit capacity, string encoding, bounds validation, and NUL-termination.
-* **Synchronized Freeze Workers**: `FreezeManager` coordinates background freeze loops via cancellable, joinable threads with atomic flags, original-value restoration on unfreeze, and automatic cancellation upon target termination.
+* **Synchronized Freeze Workers**: `FreezeManager` coordinates background freeze loops via cancellable, joinable threads with atomic flags, explicit restoration with `restore()` after unfreeze, and automatic cancellation upon target termination.
 * **Manifest & Policy Engine**: `Policy` enforces target manifests, cryptographic process identity checks, operation capabilities, time-to-live (TTL) tokens, burst rate limiting, and an atomic kill switch.
 * **Hardened Cheat Engine Parser**: `CheatTableParser` safely parses Cheat Engine 7.x XML subsets while preserving nested entries, multiple hotkeys, and signed/hex types. It fails closed on unsafe constructs (Auto Assembler, ShellExecute, LoadLibrary, raw binary injections).
 * **Agent JSON-RPC 2.0 Service**: Local control plane communicating over named pipes (production) or in-process queue pairs (testing and headless automation).
@@ -38,8 +38,8 @@ Header: [`include/gtlibcpp/memory_session.hpp`](include/gtlibcpp/memory_session.
 | Method Signature | Return Type | Description |
 |------------------|-------------|-------------|
 | `MemorySession(std::shared_ptr<IMemoryBackend> backend)` | Constructor | Creates a memory session bound to an explicit memory backend. |
-| `target_identity() const noexcept` | `const TargetIdentity&` | Retrieves target metadata (PID, path, start time, architecture, SHA-256). |
-| `is_connected() const noexcept` | `bool` | Checks if the session backend is currently attached and responsive. |
+| `identity() const` | `const TargetIdentity&` | Retrieves target metadata (PID, path, start time, architecture, SHA-256). |
+| `is_alive() const noexcept` | `bool` | Checks if the session backend is currently attached and responsive. |
 | `read<T>(Address address)` | `Result<T>` | Reads a typed primitive value (`uint32_t`, `float`, etc.) from target address. |
 | `write<T>(Address address, const T& value)` | `Result<void>` | Writes a typed value directly to the specified target address. |
 | `read_bytes(Address address, std::size_t size)` | `Result<std::vector<uint8_t>>` | Reads an exact byte buffer of arbitrary length from target memory. |
@@ -58,10 +58,11 @@ Header: [`include/gtlibcpp/freeze.hpp`](include/gtlibcpp/freeze.hpp)
 |------------------|-------------|-------------|
 | `FreezeManager(std::shared_ptr<MemorySession> session)` | Constructor | Initializes the freeze manager bound to an active memory session. |
 | `freeze(FreezeRequest request)` | `Result<void>` | Starts a background worker loop periodically rewriting a target address. |
-| `unfreeze(const EntryId& id)` | `Result<void>` | Stops the background worker and restores the original pre-freeze value. |
+| `unfreeze(const std::string& id)` | `Result<void>` | Stops and joins the freeze worker without restoring memory. |
+| `restore(const std::string& id)` | `Result<void>` | Restores captured pre-freeze bytes after the worker has stopped. |
 | `status(const EntryId& id) const` | `Result<FreezeStatus>` | Queries execution status, write count, interval, and state of a worker. |
 | `all_status() const` | `std::vector<FreezeStatus>` | Returns snapshots of all active and inactive freeze workers. |
-| `stop_all()` | `void` | Signals cancellation and cleanly joins all running freeze threads. |
+| `cancel_all()` | `void` | Signals cancellation and cleanly joins all running freeze threads. |
 
 ### 3. Safety, Policy & Gatekeeping (`gtlibcpp::Policy`)
 Header: [`include/gtlibcpp/policy.hpp`](include/gtlibcpp/policy.hpp)
@@ -103,20 +104,23 @@ Header: [`include/gtlibcpp/agent.hpp`](include/gtlibcpp/agent.hpp)
 | `stop()` | `void` | Terminates the active transport listening loop. |
 
 #### JSON-RPC 2.0 Agent Wire Methods
+
+Addresses and offsets are JSON **integers** (decimal notation), not quoted hexadecimal strings. `read` and `verify` accept a byte count in `size`; `read` does not accept a `type` parameter. All examples below show the `params` object; wrap it in `{"jsonrpc":"2.0","id":"1","method":"...","params":{...}}`.
+
 | JSON-RPC Method | Request Payload Parameters | Description |
 |-----------------|----------------------------|-------------|
-| `inspect` | `{"target": "alias"}` | Returns target architecture, PID, module base, start time, and image hash. |
-| `read` | `{"address": "0x401000", "type": "uint32"}` | Reads primitive types, strings, or byte vectors from target memory. |
-| `resolve` | `{"base": "0x400000", "offsets": ["0x10", "0x4"]}` | Resolves multi-level relative pointer chains into effective target address. |
-| `preview` | `{"address": "0x401000", "data": "0x00"}` | Simulates write, computes memory diff, verifies permissions without writing. |
-| `apply` | `{"request_id": "...", "token": "..."}` | Executes pre-approved write mutation with verification read. |
-| `verify` | `{"address": "0x401000", "expected_hash": "..."}` | Verifies target address content against expected cryptographic hash. |
-| `restore` | `{"entry_id": "player_health"}` | Restores memory address to its initial pre-mutation state. |
-| `freeze` | `{"entry_id": "ammo", "address": "...", ...}` | Starts a recurring freeze write worker at specified millisecond interval. |
-| `unfreeze` | `{"entry_id": "ammo"}` | Halts freeze worker and writes back the captured original value. |
-| `status` | `{"entry_id": "ammo"}` or `{}` | Queries status, write metrics, and health of active freeze routines. |
-| `parse` | `{"file": "path.ct"}` or `{"xml": "..."}` | Parses table XML and returns structured entries and fail-closed diagnostics. |
-| `kill_switch` | `{"action": "engage"\|"release"\|"query"}` | Controls emergency safety shutdown for all agent modifications. |
+| `inspect` | `{}` | Returns target identity and architecture. |
+| `read` | `{"address":4198400,"size":4}` | Reads the requested number of bytes. |
+| `resolve` | `{"base":4194304,"offsets":[16,4]}` | Resolves a pointer chain with numeric offsets. |
+| `preview` | `{"request_id":"op-1","target_alias":"fixture","capability":"write","address":4198400,"size":4,"expected_current_hash":"abc","value_repr":"uint32 100"}` | Checks an intended mutation without writing. |
+| `apply` | `{"request_id":"op-1","target_alias":"fixture","capability":"write","address":4198400,"size":4,"expected_current_hash":"abc","approved":true,"value_hex":"64000000","value_repr":"uint32 100"}` | Applies a policy-approved mutation. |
+| `verify` | `{"address":4198400,"size":4,"expected_hash":"..."}` | Compares a content hash. |
+| `restore` | `{"freeze_id":"ammo"}` | Restores the captured value after stopping a freeze worker. |
+| `freeze` | `{"id":"ammo","address":4198400,"type":"uint32","value":100,"interval_ms":50}` | Starts periodic writes. |
+| `unfreeze` | `{"id":"ammo"}` | Stops the worker; does not restore the original value. |
+| `status` | `{"id":"ammo"}` or `{}` | Queries freeze status. |
+| `parse` | `{"xml":"<CheatTable/>"}` | Parses a Cheat Engine XML table. |
+| `kill_switch` | `{"engage":true,"reason":"operator"}` or `{"engage":false}` | Engages or releases the safety switch. |
 
 ### 6. Observability & Logging (`gtlibcpp::Logger`)
 Header: [`include/gtlibcpp/log.hpp`](include/gtlibcpp/log.hpp)
@@ -138,7 +142,7 @@ Headers: [`include/gtlibcpp/windows_backend.hpp`](include/gtlibcpp/windows_backe
 | `make_windows_backend(WindowsBackendOptions)` | `MemoryBackendPtr` | Creates a Win32 backend (`OpenProcess`, `ReadProcessMemory`, `WriteProcessMemory`). |
 | `make_named_pipe_server(NamedPipeServerOptions)`| `std::shared_ptr<IAgentTransport>` | Creates a Windows named pipe server (`\\.\pipe\<name>`) with framing. |
 | `make_named_pipe_client(std::string pipe_name)`| `std::shared_ptr<IAgentTransport>` | Creates a client connection for Windows named pipe RPCs. |
-| `InProcTransportPair::create()` | `std::shared_ptr<InProcTransportPair>` | Creates thread-safe in-process message queues for unit tests and local CLI. |
+| `std::make_shared<InProcTransportPair>()` | `std::shared_ptr<InProcTransportPair>` | Creates a shared in-process queue pair; call `make_client()` and `make_server()` on the shared pair. |
 
 ### 8. Legacy Win32 Trainer Surface (`GTLibc`)
 Header: [`GTLibc.hpp`](GTLibc.hpp) | Implementation: [`GTLibc.cpp`](GTLibc.cpp)
@@ -222,26 +226,51 @@ int main() {
 
 ### JSON-RPC Agent Automation
 
+The in-process example needs an active service on the other end of the transport. The following complete example uses the simulated backend from `examples/simulated_game.hpp` (build it inside this repository's examples directory):
+
 ```cpp
 #include "gtlibcpp/agent.hpp"
 #include "gtlibcpp/inproc_transport.hpp"
+#include "gtlibcpp/memory_session.hpp"
+#include "gtlibcpp/freeze.hpp"
+#include "gtlibcpp/policy.hpp"
+#include "gtlibcpp/parser.hpp"
+#include "simulated_game.hpp"
 #include <iostream>
+#include <memory>
+#include <vector>
 
 int main() {
-    // In-process transport for automation, testing, or script hosts
-    auto channel = gtlibcpp::InProcTransportPair::create();
-    auto client  = channel->make_client();
+    auto game = std::make_shared<gtlibcpp::demo::SimulatedGameProcess>();
+    auto session = std::make_shared<gtlibcpp::MemorySession>(game);
+    auto policy = std::make_shared<gtlibcpp::Policy>(
+        std::vector<gtlibcpp::TargetManifest>{});
+    auto freeze = std::make_shared<gtlibcpp::FreezeManager>(session);
+    auto parser = std::make_shared<gtlibcpp::CheatTableParser>();
+    auto agent = std::make_shared<gtlibcpp::AgentService>(
+        session, policy, freeze, parser);
 
-    // Send JSON-RPC request to inspect target environment
-    client->send(R"({"jsonrpc":"2.0","id":1,"method":"inspect","params":{}})");
-    auto response = client->receive();
+    auto channel = std::make_shared<gtlibcpp::InProcTransportPair>();
+    auto client = channel->make_client();
+    agent->serve(channel->make_server());  // Start handler before receiving.
 
-    if (response) {
-        std::cout << "Agent Response: " << response.value() << "\n";
+    auto sent = client->send(
+        R"({"jsonrpc":"2.0","id":"1","method":"inspect","params":{}})");
+    if (!sent) {
+        channel->close();
+        agent->stop();
+        return 1;
     }
-    return 0;
+    auto response = client->receive();
+    if (response) std::cout << "Agent Response: " << response.value() << '\\n';
+
+    channel->close(); // Unblock server receive before joining worker.
+    agent->stop();
+    return response ? 0 : 1;
 }
 ```
+
+See [examples/demo_agent_service.cpp](examples/demo_agent_service.cpp) for the full working agent and policy flow.
 
 ---
 
@@ -301,6 +330,6 @@ Test project build
 
 ## Authorised Use & Licensing
 
-GTLibCpp is developed strictly for **authorised offline use only** (personal development, modding, debugging, and offline single-player research). The library does not bypass operating system protections, tamper with anti-cheat engines, or gain unauthorized access.
+**Project policy:** GTLibCpp is intended for authorised offline development, modding, debugging, and single-player research. It is not intended for unauthorized access, unlawful activity, or anti-cheat bypass.
 
-Covered material is licensed under the [Heaven-HM Community Modding License](LICENSE). You may modify the source and create free, noncommercial modifications. Commercial distribution or unauthorized network exploitation is strictly prohibited. See [LICENSE_SCOPE.md](LICENSE_SCOPE.md) for details on prior rights.
+**License terms:** The [Heaven-HM Community Modding License](LICENSE) permits lawful, free, noncommercial use, modification, and redistribution of covered material, subject to attribution, notice, same-license, and third-party-rights conditions. Commercial use or permissions beyond the license require separate written permission. The license prohibits unlawful conduct and unauthorized access; it does not impose a blanket ban on networking. See [LICENSE_SCOPE.md](LICENSE_SCOPE.md) for previously granted rights.
