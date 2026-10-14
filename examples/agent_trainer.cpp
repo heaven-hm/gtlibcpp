@@ -119,7 +119,8 @@ JsonValue tool_call(AgentService& agent, const JsonValue& params) {
 
 int main(int argc, char** argv) {
     const bool direct_rpc = argc == 2 && std::string(argv[1]) == "--json-rpc";
-    if (argc > 1 && !direct_rpc) {
+    const bool self_test = argc == 2 && std::string(argv[1]) == "--self-test";
+    if (argc > 1 && !direct_rpc && !self_test) {
         std::cerr << "Usage: gtlibcpp_agent_trainer [--json-rpc]\n";
         return 2;
     }
@@ -131,6 +132,31 @@ int main(int argc, char** argv) {
     auto freeze = std::make_shared<gtlibcpp::FreezeManager>(session);
     auto parser = std::make_shared<gtlibcpp::CheatTableParser>();
     gtlibcpp::AgentService agent(session, policy, freeze, parser);
+
+    if (self_test) {
+        const auto list = list_tools();
+        const auto* tools = gtlibcpp::json_get(list, "tools");
+        if (!tools || tools->kind != gtlibcpp::JsonValue::Kind::array || tools->array.size() != 4)
+            return 1;
+        const auto inspected = tool_call(agent, object({
+            {"name", gtlibcpp::JsonValue::make_string("gt_inspect")},
+            {"arguments", object({})}
+        }));
+        if (gtlibcpp::json_get_bool(inspected, "isError", true)) return 1;
+        const auto read = tool_call(agent, object({
+            {"name", gtlibcpp::JsonValue::make_string("gt_read")},
+            {"arguments", object({
+                {"address", gtlibcpp::JsonValue::make_int(0x300000010LL)},
+                {"size", gtlibcpp::JsonValue::make_int(4)}
+            })}
+        }));
+        if (gtlibcpp::json_get_bool(read, "isError", true)) return 1;
+        const auto blocked = tool_call(agent, object({
+            {"name", gtlibcpp::JsonValue::make_string("gt_apply")},
+            {"arguments", object({})}
+        }));
+        return gtlibcpp::json_get_bool(blocked, "isError", false) ? 0 : 1;
+    }
 
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -151,8 +177,11 @@ int main(int argc, char** argv) {
         if (direct_rpc) {
             // Crucial: do not expose unsafe write/freeze/kill-switch handlers
             // through this agent-facing example while policy fixes are pending.
-            if (method != "inspect" && method != "read"
-                && method != "resolve" && method != "status") {
+            const auto tool_name = method == "read" ? "gt_read"
+                                 : method == "resolve" ? "gt_resolve"
+                                 : method == "inspect" ? "gt_inspect"
+                                 : method == "status" ? "gt_status" : "";
+            if (tool_name.empty() || !validate(tool_name, p)) {
                 response = rpc_error(*id, -32601, "Method unavailable in read-only trainer");
             } else {
                 auto handled = agent.handle(line);
@@ -164,7 +193,7 @@ int main(int argc, char** argv) {
                 }
             }
         } else if (method == "initialize") {
-            const auto version = gtlibcpp::json_get_string(p, "protocolVersion", "2025-03-26");
+            const std::string version = "2025-03-26"; // Supported MCP protocol version
             response = rpc_result(*id, object({
                 {"protocolVersion", gtlibcpp::JsonValue::make_string(version)},
                 {"capabilities", object({{"tools", object({})}})},
