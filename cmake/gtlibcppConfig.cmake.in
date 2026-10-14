@@ -3,11 +3,4 @@
 include(CMakeFindDependencyMacro)
 include("${CMAKE_CURRENT_LIST_DIR}/gtlibcppTargets.cmake")
 
-if(TARGET gtlibcpp::gtlibcpp_core AND NOT TARGET gtlibcpp::core)
-    add_library(gtlibcpp::core ALIAS gtlibcpp::gtlibcpp_core)
-endif()
-if(TARGET gtlibcpp::gtlibcpp_win32 AND NOT TARGET gtlibcpp::win32)
-    add_library(gtlibcpp::win32 ALIAS gtlibcpp::gtlibcpp_win32)
-endif()
-
 check_required_components(gtlibcpp)
