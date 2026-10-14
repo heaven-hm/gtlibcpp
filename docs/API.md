@@ -639,9 +639,11 @@ public:
 
 The legacy trainer surface (`GTLibc.hpp`, `GTLibc.cpp`, `GTLibc.tpp`,
 `IGITrainer.cpp`, `GenericTrainer.cpp`, `CEParser.{hpp,cpp}`) is preserved
-in the repository for backwards compatibility and is compiled into the
-optional `gtlibcpp::win32` target when `GTLIBCPP_BUILD_DEMOS=ON`. It is slated
-for retirement in 2.0.0; see [MIGRATION.md](MIGRATION.md) for the upgrade path.
+in the repository for backwards compatibility. `GTLIBCPP_BUILD_DEMOS=ON`
+builds the Windows-only legacy trainer executables, which link against
+`gtlibcpp::win32`; it does not control compilation of that library or the
+legacy source files. The legacy API is slated for retirement in 2.0.0;
+see [MIGRATION.md](MIGRATION.md) for the upgrade path.
 
 ### `class GTLibc`
 
@@ -649,8 +651,8 @@ for retirement in 2.0.0; see [MIGRATION.md](MIGRATION.md) for the upgrade path.
 class GTLibc {
 public:
     GTLibc();
-    explicit GTLibc(bool enableLogs);
-    explicit GTLibc(const std::string &gameName);
+    GTLibc(bool enableLogs);
+    GTLibc(const std::string &gameName);
     GTLibc(const std::string &gameName, bool enableLogs);
     ~GTLibc();
 
