@@ -471,6 +471,16 @@ JsonValue AgentService::on_preview(const JsonValue& params) {
     PendingApproval pa;
     pa.request_id = request.request_id;
     pa.target_alias = request.target_alias;
+    pa.capability = request.capability;
+    pa.address = request.address;
+    pa.size = request.size;
+    pa.expected_current_hash = request.expected_current_hash;
+    pa.value_repr = request.value_repr;
+    pa.value_hex = json_get_string(params, "value_hex");
+    pa.freeze_id = json_get_string(params, "id");
+    pa.freeze_type = json_get_string(params, "type", "uint32");
+    pa.freeze_value = json_get_int(params, "value", 0);
+    pa.freeze_interval_ms = json_get_int(params, "interval_ms", 50);
     pa.issued_at_ms = now_ms();
     pa.expires_at_ms = pa.issued_at_ms + 5 * 60 * 1000;
     {
@@ -506,6 +516,11 @@ JsonValue AgentService::on_apply(const JsonValue& params) {
                               auth.error().message, &auth.error());
     }
     auto bytes_str = json_get_string(params, "value_hex");
+    if (bytes_str != token.value_hex) {
+        return error_response(request.request_id,
+                              static_cast<std::int32_t>(ErrorCode::policy_denied),
+                              "write payload differs from the preview");
+    }
     std::vector<std::uint8_t> value_bytes;
     if (!bytes_str.empty()) {
         if (bytes_str.size() % 2 != 0) {
