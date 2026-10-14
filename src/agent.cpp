@@ -608,6 +608,40 @@ JsonValue AgentService::on_freeze(const JsonValue& params) {
     fr.size = static_cast<std::size_t>(json_get_int(params, "size", 0));
     const std::int64_t interval = json_get_int(params, "interval_ms", 50);
     fr.interval = std::chrono::milliseconds(interval);
+    if (fr.size == 0) {
+        if (fr.type_name == "uint8" || fr.type_name == "int8") fr.size = 1;
+        else if (fr.type_name == "uint16" || fr.type_name == "int16") fr.size = 2;
+        else if (fr.type_name == "uint32" || fr.type_name == "int32" || fr.type_name == "float") fr.size = 4;
+        else if (fr.type_name == "uint64" || fr.type_name == "int64" || fr.type_name == "double") fr.size = 8;
+    }
+    auto request = make_request(params, "freeze");
+    request.capability = Capability::freeze;
+    request.size = fr.size;
+    PendingApproval token;
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+        auto it = pending_.find(request.request_id);
+        if (it == pending_.end()) {
+            return error_response(request.request_id,
+                                  static_cast<std::int32_t>(ErrorCode::approval_required),
+                                  "freeze requires a prior matching preview");
+        }
+        token = it->second;
+        pending_.erase(it);
+    }
+    if (token.freeze_id != fr.id || token.freeze_type != fr.type_name
+        || token.freeze_value != json_get_int(params, "value")
+        || token.freeze_interval_ms != interval) {
+        return error_response(request.request_id,
+                              static_cast<std::int32_t>(ErrorCode::policy_denied),
+                              "freeze parameters differ from preview");
+    }
+    auto authorized = policy_->authorize_with_token(session_->identity(), request, &token);
+    if (!authorized) {
+        return error_response(request.request_id,
+                              static_cast<std::int32_t>(authorized.error().code),
+                              authorized.error().message, &authorized.error());
+    }
     auto r = freeze_->freeze(fr);
     if (!r) {
         return error_response(json_get_string(params, "request_id"),
@@ -710,6 +744,7 @@ JsonValue AgentService::on_kill_switch(const JsonValue& params) {
     const bool engage = json_get_bool(params, "engage", true);
     if (engage) {
         policy_->set_kill_switch_reason(json_get_string(params, "reason", "operator"));
+        freeze_->cancel_all(); // Stop ongoing periodic mutations as well.
     } else {
         const_cast<KillSwitch&>(policy_->kill_switch()).release();
     }
