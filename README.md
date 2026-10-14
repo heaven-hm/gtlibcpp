@@ -262,7 +262,7 @@ int main() {
         return 1;
     }
     auto response = client->receive();
-    if (response) std::cout << "Agent Response: " << response.value() << '\\n';
+    if (response) std::cout << "Agent Response: " << response.value() << '\n';
 
     channel->close(); // Unblock server receive before joining worker.
     agent->stop();
