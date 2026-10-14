@@ -319,6 +319,14 @@ Test project build
 
 ---
 
+## AI Agent Trainer (MCP + JSON-RPC)
+
+Build `gtlibcpp_agent_trainer` with `GTLIBCPP_BUILD_EXAMPLES=ON` to expose the read-only trainer to AI coding agents via MCP over stdio. The same executable supports direct newline-delimited JSON-RPC with `--json-rpc`. It uses a simulated game by default and can attach read-only to an authorized Windows PID.
+
+See [MCP setup and runnable Python trainer client](docs/MCP.md) and [examples/agent_trainer_client.py](examples/agent_trainer_client.py). Mutating tools remain disabled until the outstanding security review findings are fixed.
+
+---
+
 ## Documentation Index
 
 | File | Description |
