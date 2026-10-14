@@ -112,8 +112,8 @@ Addresses and offsets are JSON **integers** (decimal notation), not quoted hexad
 | `inspect` | `{}` | Returns target identity and architecture. |
 | `read` | `{"address":4198400,"size":4}` | Reads the requested number of bytes. |
 | `resolve` | `{"base":4194304,"offsets":[16,4]}` | Resolves a pointer chain with numeric offsets. |
-| `preview` | `{"request_id":"op-1","target_alias":"fixture","capability":"write","address":4198400,"size":4,"expected_current_hash":"abc","value_repr":"uint32 100"}` | Checks an intended mutation without writing. |
-| `apply` | `{"request_id":"op-1","target_alias":"fixture","capability":"write","address":4198400,"size":4,"expected_current_hash":"abc","approved":true,"value_hex":"64000000","value_repr":"uint32 100"}` | Applies a policy-approved mutation. |
+| `preview` | `{"request_id":"op-1","target_alias":"fixture","capability":"write","address":4198400,"size":4,"expected_current_hash":"<current-sha256>","value_hex":"64000000","value_repr":"uint32 100"}` | Checks an intended mutation without writing. |
+| `apply` | `{"request_id":"op-1","target_alias":"fixture","capability":"write","address":4198400,"size":4,"expected_current_hash":"<current-sha256>","approved":true,"value_hex":"64000000","value_repr":"uint32 100"}` | Applies a policy-approved mutation. |
 | `verify` | `{"address":4198400,"size":4,"expected_hash":"..."}` | Compares a content hash. |
 | `restore` | `{"freeze_id":"ammo"}` | Disabled over RPC until authenticated rollback authorization is implemented. |
 | `freeze` | `{"id":"ammo","address":4198400,"type":"uint32","value":100,"interval_ms":50}` | Starts periodic writes. |
