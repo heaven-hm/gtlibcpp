@@ -118,7 +118,19 @@ Result<void> FreezeManager::freeze(FreezeRequest request) {
 
 void FreezeManager::worker_loop(std::shared_ptr<Entry> entry) {
     std::vector<std::uint8_t> write_bytes(entry->request.size);
-    u64_to_bytes(entry->request.value_u64, write_bytes.data(), entry->request.size);
+    if (entry->request.type_name == "float" && entry->request.size == sizeof(float)) {
+        const float value = static_cast<float>(entry->request.has_floating_value
+            ? entry->request.floating_value
+            : static_cast<double>(entry->request.value_u64));
+        std::memcpy(write_bytes.data(), &value, sizeof(value));
+    } else if (entry->request.type_name == "double" && entry->request.size == sizeof(double)) {
+        const double value = entry->request.has_floating_value
+            ? entry->request.floating_value
+            : static_cast<double>(entry->request.value_u64);
+        std::memcpy(write_bytes.data(), &value, sizeof(value));
+    } else {
+        u64_to_bytes(entry->request.value_u64, write_bytes.data(), entry->request.size);
+    }
     // Slice the interval into 1 ms steps so we react to cancel quickly
     // even when the requested interval is short or zero.
     const auto total_ms = std::max<std::int64_t>(1, entry->request.interval.count());
