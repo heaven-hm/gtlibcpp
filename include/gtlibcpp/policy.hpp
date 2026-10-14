@@ -69,6 +69,16 @@ struct ApprovalToken {
     std::string  target_alias{};
     std::int64_t issued_at_ms{};
     std::int64_t expires_at_ms{};
+    Capability capability{Capability::read};
+    Address address{0};
+    std::size_t size{0};
+    std::string expected_current_hash{};
+    std::string value_repr{};
+    std::string value_hex{};
+    std::string freeze_id{};
+    std::string freeze_type{};
+    std::int64_t freeze_value{0};
+    std::int64_t freeze_interval_ms{0};
     std::string  signature{};
 };
 
