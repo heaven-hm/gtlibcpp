@@ -142,6 +142,42 @@ GTLIBCPP_TEST(preview_then_apply_round_trip) {
     GTLIBCPP_REQUIRE(!gtlibcpp::json_get(aj.value(), "error"));
 }
 
+GTLIBCPP_TEST(preview_rejects_changed_apply_payload) {
+    std::shared_ptr<FakeBackend> backend;
+    auto svc = build_service(backend);
+    auto preview = svc->handle(R"({"jsonrpc":"2.0","id":"p","method":"preview","params":{
+        "request_id":"immutable-1","target_alias":"fixture","capability":"write",
+        "address":4096,"size":4,"expected_current_hash":"abc",
+        "value_hex":"11223344","value_repr":"uint32 0x11223344"}})");
+    GTLIBCPP_REQUIRE(preview);
+    auto tampered = svc->handle(R"({"jsonrpc":"2.0","id":"a","method":"apply","params":{
+        "request_id":"immutable-1","target_alias":"fixture","capability":"write",
+        "address":4096,"size":4,"expected_current_hash":"abc","approved":true,
+        "value_hex":"55667788","value_repr":"uint32 0x11223344"}})");
+    GTLIBCPP_REQUIRE(tampered);
+    auto decoded = gtlibcpp::json_decode(tampered.value());
+    GTLIBCPP_REQUIRE(decoded && gtlibcpp::json_get(decoded.value(), "error"));
+}
+
+GTLIBCPP_TEST(preview_rejects_changed_original_bytes) {
+    std::shared_ptr<FakeBackend> backend;
+    auto svc = build_service(backend);
+    auto preview = svc->handle(R"({"jsonrpc":"2.0","id":"p","method":"preview","params":{
+        "request_id":"immutable-2","target_alias":"fixture","capability":"write",
+        "address":4096,"size":4,"expected_current_hash":"abc",
+        "value_hex":"11223344","value_repr":"uint32 0x11223344"}})");
+    GTLIBCPP_REQUIRE(preview);
+    const std::uint32_t changed = 123;
+    backend->put(4096, &changed, sizeof(changed));
+    auto result = svc->handle(R"({"jsonrpc":"2.0","id":"a","method":"apply","params":{
+        "request_id":"immutable-2","target_alias":"fixture","capability":"write",
+        "address":4096,"size":4,"expected_current_hash":"abc","approved":true,
+        "value_hex":"11223344","value_repr":"uint32 0x11223344"}})");
+    GTLIBCPP_REQUIRE(result);
+    auto decoded = gtlibcpp::json_decode(result.value());
+    GTLIBCPP_REQUIRE(decoded && gtlibcpp::json_get(decoded.value(), "error"));
+}
+
 GTLIBCPP_TEST(apply_without_preview_is_denied) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
