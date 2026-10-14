@@ -1,3 +1,4 @@
+#include <mutex>
 #pragma once
 
 #include <atomic>
@@ -83,6 +84,7 @@ private:
         std::size_t  count{0};
     };
     std::size_t max_per_minute_;
+    mutable std::mutex mutex_;
     std::unordered_map<std::string, Window> windows_;
 };
 
