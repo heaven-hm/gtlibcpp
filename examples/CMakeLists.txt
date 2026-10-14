@@ -51,3 +51,11 @@ if(WIN32)
         ${GTLIBCPP_WIN32_TARGET}
     )
 endif()
+
+# Read-only trainer gateway: MCP over stdio or the existing JSON-RPC API.
+add_executable(gtlibcpp_agent_trainer agent_trainer.cpp)
+target_link_libraries(gtlibcpp_agent_trainer PRIVATE ${GTLIBCPP_CORE_TARGET})
+target_include_directories(gtlibcpp_agent_trainer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+)
