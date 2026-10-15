@@ -141,7 +141,8 @@ public:
 private:
     HANDLE create_pipe() const {
         return ::CreateNamedPipeA(
-            options_.pipe_name.c_str(),
+            (options_.pipe_name.rfind("\\\\.\\pipe\\", 0) == 0
+                ? options_.pipe_name : std::string("\\\\.\\pipe\\") + options_.pipe_name).c_str(),
             PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
             PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
             options_.max_instances,
