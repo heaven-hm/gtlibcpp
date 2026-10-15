@@ -57,6 +57,11 @@ if(WIN32)
     add_library(gtlibcpp::win32 ALIAS gtlibcpp_win32)
 endif()
 
+# Minimal, read-only CLI tooling; no target process attachment.
+add_executable(gtctl tools/gtctl.cpp)
+target_compile_definitions(gtctl PRIVATE GTLIBCPP_VERSION="${PROJECT_VERSION}")
+install(TARGETS gtctl RUNTIME DESTINATION bin)
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
