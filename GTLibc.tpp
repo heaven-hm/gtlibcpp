@@ -188,7 +188,10 @@ bool GTLibc::WriteAddressOffset(DWORD address, DWORD offset, const T &value)
 template <typename T>
 bool GTLibc::WriteAddressOffsets(DWORD address, const std::vector<DWORD> &offsets, const T &value)
 {
-    AddLog("WriteAddressOffsets", "Trying to write to address: " + to_hex_string(address) + " with offsets: " + to_hex_string(offsets.size()) + " with value: " + std::to_string(value));
+    AddLog("WriteAddressOffsets", "Scatter writes to base + offset for address: " + to_hex_string(address) + " (for pointer chains, use WritePointerOffsets)");
+    if (offsets.empty())
+        return WriteAddress<T>(address, value);
+
     try
     {
         for (const DWORD &offset : offsets)
