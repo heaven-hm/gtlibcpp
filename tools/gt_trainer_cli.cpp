@@ -1,7 +1,10 @@
+#include <atomic>
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <map>
@@ -12,22 +15,119 @@
 #include <thread>
 #include <vector>
 
+#if defined(_WIN32)
+#include <conio.h>
+#include <io.h>
+#include <windows.h>
+#include "gtlibcpp/windows_backend.hpp"
+#include "gtlibcpp/windows_discovery.hpp"
+#else
+#include <sys/select.h>
+#include <termios.h>
+#include <unistd.h>
+#endif
+
 #include "gtlibcpp/freeze.hpp"
 #include "gtlibcpp/memory_session.hpp"
 #include "gtlibcpp/parser.hpp"
 #include "gtlibcpp/policy.hpp"
 #include "gtlibcpp/result.hpp"
 
-#if defined(_WIN32)
-#include "gtlibcpp/windows_backend.hpp"
-#include "gtlibcpp/windows_discovery.hpp"
-#endif
-
 #ifndef GTLIBCPP_VERSION
 #define GTLIBCPP_VERSION "1.0.0"
 #endif
 
 namespace {
+
+std::atomic<bool> g_running{true};
+
+void handle_signal(int) {
+    g_running = false;
+}
+
+inline bool is_stdin_tty() {
+#if defined(_WIN32)
+    return _isatty(_fileno(stdin)) != 0;
+#else
+    return isatty(STDIN_FILENO) != 0;
+#endif
+}
+
+inline bool is_stdout_tty() {
+#if defined(_WIN32)
+    return _isatty(_fileno(stdout)) != 0;
+#else
+    return isatty(STDOUT_FILENO) != 0;
+#endif
+}
+
+#if !defined(_WIN32)
+class TerminalRawScope {
+public:
+    TerminalRawScope() {
+        if (!is_stdin_tty()) return;
+        if (tcgetattr(STDIN_FILENO, &orig_) == 0) {
+            struct termios raw = orig_;
+            raw.c_lflag &= ~(ICANON | ECHO);
+            raw.c_cc[VMIN] = 0;
+            raw.c_cc[VTIME] = 0;
+            if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0) {
+                active_ = true;
+            }
+        }
+    }
+    ~TerminalRawScope() {
+        if (active_) {
+            tcsetattr(STDIN_FILENO, TCSANOW, &orig_);
+        }
+    }
+    bool is_active() const { return active_; }
+private:
+    struct termios orig_{};
+    bool active_ = false;
+};
+
+static int poll_key(int timeout_ms) {
+    if (!is_stdin_tty()) return -1;
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    struct timeval tv{};
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    const int ret = select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv);
+    if (ret > 0 && FD_ISSET(STDIN_FILENO, &fds)) {
+        unsigned char c = 0;
+        if (read(STDIN_FILENO, &c, 1) == 1) {
+            return static_cast<int>(c);
+        }
+    }
+    return -1;
+}
+#else
+class TerminalRawScope {
+public:
+    bool is_active() const { return is_stdin_tty(); }
+};
+
+static int poll_key(int timeout_ms) {
+    if (_kbhit()) {
+        return _getch();
+    }
+    Sleep(static_cast<DWORD>(timeout_ms));
+    return -1;
+}
+
+static bool is_combo_down(const std::vector<int>& keys) {
+    if (keys.empty()) return false;
+    for (int k : keys) {
+        if ((GetAsyncKeyState(k) & 0x8000) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+#endif
 
 // Translates Cheat Engine virtual key codes into readable names
 std::string format_hotkey(const std::vector<int>& keys) {
@@ -107,92 +207,132 @@ public:
         return gtlibcpp::Result<std::size_t>::success(bytes.size());
     }
 
-    bool is_alive() noexcept override { return true; }
-    std::string target_id() const override { return "ac_client (simulated)"; }
-    gtlibcpp::TargetIdentity identity() const override {
-        return gtlibcpp::TargetIdentity{1337, 1, "ac_client.exe", "sha256:assaultcube", gtlibcpp::Architecture::x86};
-    }
+    [[nodiscard]] bool is_alive() noexcept override { return true; }
 
-    void put_u32(gtlibcpp::Address a, std::uint32_t val) {
-        const auto* ptr = reinterpret_cast<const std::uint8_t*>(&val);
-        for (std::size_t i = 0; i < 4; ++i) memory_[a + i] = ptr[i];
-    }
+    [[nodiscard]] std::string target_id() const override { return "simulated:ac_client:1337"; }
 
-    void put_float(gtlibcpp::Address a, float val) {
-        const auto* ptr = reinterpret_cast<const std::uint8_t*>(&val);
-        for (std::size_t i = 0; i < 4; ++i) memory_[a + i] = ptr[i];
+    [[nodiscard]] gtlibcpp::TargetIdentity identity() const override {
+        gtlibcpp::TargetIdentity id{};
+        id.pid = 1337;
+        id.image_path = "ac_client.exe";
+        id.architecture = gtlibcpp::Architecture::x86;
+        return id;
     }
 
 private:
+    void put_u32(gtlibcpp::Address addr, std::uint32_t val) {
+        std::uint8_t b[4];
+        std::memcpy(b, &val, 4);
+        for (std::size_t i = 0; i < 4; ++i) memory_[addr + i] = b[i];
+    }
+
+    void put_float(gtlibcpp::Address addr, float val) {
+        std::uint8_t b[4];
+        std::memcpy(b, &val, 4);
+        for (std::size_t i = 0; i < 4; ++i) memory_[addr + i] = b[i];
+    }
+
     std::map<gtlibcpp::Address, std::uint8_t> memory_;
 };
 
-// Resolves a multi-level pointer path to the final data address
+// Resolves a Cheat Table pointer chain: base address followed by a list of offsets
 gtlibcpp::Result<gtlibcpp::Address> resolve_pointer_chain(
     gtlibcpp::MemorySession& session,
-    gtlibcpp::Address base_address,
+    gtlibcpp::Address base_addr,
     const std::vector<gtlibcpp::Address>& offsets) {
-    if (offsets.empty()) {
-        return gtlibcpp::Result<gtlibcpp::Address>::success(base_address);
-    }
+    if (offsets.empty()) return gtlibcpp::Result<gtlibcpp::Address>::success(base_addr);
 
-    gtlibcpp::Address current = base_address;
-    // Walk pointer dereferences in Cheat Table order (last to first or first to last)
-    for (std::size_t i = offsets.size(); i > 1; --i) {
-        auto deref = session.read<std::uint32_t>(current);
-        if (!deref) return gtlibcpp::Result<gtlibcpp::Address>::failure(deref.error());
-        current = static_cast<gtlibcpp::Address>(deref.value()) + offsets[i - 1];
+    gtlibcpp::Address current = base_addr;
+    for (std::size_t i = 0; i < offsets.size(); ++i) {
+        if (i == offsets.size() - 1) {
+            // Last offset is added to pointer to reach final scalar value
+            auto ptr_val = session.read<std::uint32_t>(current);
+            if (!ptr_val) return gtlibcpp::Result<gtlibcpp::Address>::failure(ptr_val.error());
+            return gtlibcpp::Result<gtlibcpp::Address>::success(
+                static_cast<gtlibcpp::Address>(ptr_val.value()) + offsets[i]);
+        } else {
+            auto ptr_val = session.read<std::uint32_t>(current);
+            if (!ptr_val) return gtlibcpp::Result<gtlibcpp::Address>::failure(ptr_val.error());
+            current = static_cast<gtlibcpp::Address>(ptr_val.value()) + offsets[i];
+        }
     }
+    return gtlibcpp::Result<gtlibcpp::Address>::success(current);
+}
 
-    auto deref_last = session.read<std::uint32_t>(current);
-    if (!deref_last) return gtlibcpp::Result<gtlibcpp::Address>::failure(deref_last.error());
-    return gtlibcpp::Result<gtlibcpp::Address>::success(
-        static_cast<gtlibcpp::Address>(deref_last.value()) + offsets[0]);
+void print_banner() {
+    std::cout << "========================================================\n"
+              << "  gtlibcpp CLI Trainer & Hotkey Controller v" << GTLIBCPP_VERSION << "\n"
+              << "========================================================\n";
+}
+
+void print_usage(const char* prog) {
+    std::cout << "Usage: " << prog << " [OPTIONS]\n"
+              << "Options:\n"
+              << "  --table <path>   Load Cheat Table file (default: demos/CheatTable/assaultcube.ct)\n"
+              << "  --list           List parsed cheat entries and exit\n"
+              << "  --test [path]    Run automated hotkey detection and memory verification test\n"
+              << "  --version        Show version information\n"
+              << "  --help           Show this help message\n";
 }
 
 } // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
+    std::signal(SIGINT, handle_signal);
+    std::signal(SIGTERM, handle_signal);
+
     std::string table_path = "demos/CheatTable/assaultcube.ct";
-    bool test_mode = false;
     bool list_mode = false;
+    bool test_mode = false;
 
     for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
-        if (arg == "--test") {
+        std::string_view arg(argv[i]);
+        if (arg == "--help" || arg == "-h") {
+            print_usage(argv[0]);
+            return 0;
+        } else if (arg == "--version" || arg == "-v") {
+            std::cout << "gt_trainer_cli v" << GTLIBCPP_VERSION << "\n";
+            return 0;
+        } else if (arg == "--list") {
+            list_mode = true;
+        } else if (arg == "--test") {
             test_mode = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 table_path = argv[++i];
             }
-        } else if (arg == "--list") {
-            list_mode = true;
         } else if (arg == "--table" && i + 1 < argc) {
             table_path = argv[++i];
-        } else if (arg == "--version") {
-            std::cout << "gt_trainer_cli (gtlibcpp " << GTLIBCPP_VERSION << ")\n";
-            return 0;
-        } else if (arg == "--help") {
-            std::cout << "Usage: gt_trainer_cli [OPTIONS]\n"
-                      << "Options:\n"
-                      << "  --table <path>   Load Cheat Table file (default: " << table_path << ")\n"
-                      << "  --list           List parsed cheat entries and exit\n"
-                      << "  --test [path]    Run automated hotkey detection and memory verification test\n"
-                      << "  --version        Show version information\n"
-                      << "  --help           Show this help message\n";
-            return 0;
+        } else {
+            std::cerr << "Unknown option: " << arg << "\n";
+            print_usage(argv[0]);
+            return 1;
         }
     }
 
-    std::cout << "========================================================\n"
-              << "  gtlibcpp CLI Trainer & Hotkey Controller v" << GTLIBCPP_VERSION << "\n"
-              << "========================================================\n";
+    print_banner();
 
-    // 1. Parse the Cheat Table using gtlibcpp::CheatTableParser
+    // 1. Parse Cheat Table
     gtlibcpp::CheatTableParser parser;
     auto parse_res = parser.parse_file(table_path);
     if (!parse_res) {
-        std::cerr << "[-] Error parsing cheat table '" << table_path << "': "
-                  << parse_res.error().message << "\n";
+        // Fallback search paths
+        std::vector<std::string> fallbacks = {
+            "../" + table_path,
+            "CheatTable/assaultcube.ct",
+            "../demos/CheatTable/assaultcube.ct"
+        };
+        for (const auto& alt : fallbacks) {
+            parse_res = parser.parse_file(alt);
+            if (parse_res) {
+                table_path = alt;
+                break;
+            }
+        }
+    }
+
+    if (!parse_res) {
+        std::cerr << "[-] Error loading cheat table: " << parse_res.error().message
+                  << " (path: " << table_path << ")\n";
         return 1;
     }
 
@@ -366,39 +506,145 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // 5. Interactive CLI Hotkey Detection Loop
-    std::cout << "Interactive CLI Hotkey Controls:\n"
-              << "  Press [H] or enter 'h'  : Trigger Health (100 HP)       [Hotkeys: " << (health_entry ? format_hotkey(health_entry->hotkeys) : "Ctrl+H") << "]\n"
-              << "  Press [A] or enter 'a'  : Toggle Unlimited Ammo         [Hotkeys: " << (ammo_entry ? format_hotkey(ammo_entry->hotkeys) : "Ctrl+A") << "]\n"
-              << "  Press [Z] or enter 'z'  : High Jump (+10.0 ZCord)       [Hotkeys: " << (zcord_entry ? format_hotkey(zcord_entry->hotkeys) : "Ctrl+Z") << "]\n"
-              << "  Press [S] or enter 's'  : Display current memory status\n"
-              << "  Press [Q] or enter 'q'  : Quit\n\n";
+    // 5. Active Loop & Hotkey Controller
+    struct HotkeyBinding {
+        std::string name;
+        std::vector<int> ce_keys;
+        char cli_key;
+        int posix_ctrl_key;
+        std::function<void()> trigger;
+        bool prev_down = false;
+    };
 
+    std::vector<HotkeyBinding> bindings;
+    bindings.push_back({
+        "Health (100 HP)",
+        health_entry ? health_entry->hotkeys : std::vector<int>{17, 72},
+        'h',
+        8, // Ctrl+H
+        trigger_health,
+        false
+    });
+    bindings.push_back({
+        "Unlimited Ammo (Freeze 999)",
+        ammo_entry ? ammo_entry->hotkeys : std::vector<int>{17, 65},
+        'a',
+        1, // Ctrl+A
+        trigger_ammo,
+        false
+    });
+    bindings.push_back({
+        "High Jump (+10.0 ZCord)",
+        zcord_entry ? zcord_entry->hotkeys : std::vector<int>{17, 90},
+        'z',
+        26, // Ctrl+Z
+        trigger_high_jump,
+        false
+    });
+
+    std::cout << "[*] Trainer active loop running! Listening for hotkeys (Press 'q' or Ctrl+C to quit)...\n";
+    std::cout << "    Controls: [H] Health (100 HP) | [A] Unlimited Ammo | [Z] High Jump (+10) | [S] Status | [Q] Quit\n";
+#if defined(_WIN32)
+    std::cout << "    Global In-Game Hotkeys Active: Ctrl+H (Health), Ctrl+A (Ammo), Ctrl+Z (Jump)\n\n";
+#else
+    std::cout << "    Terminal Hotkeys Active: Hit [H], [A], [Z], or [S] at any time (no Enter required)\n\n";
+#endif
+
+    const bool stdout_tty = is_stdout_tty();
     print_status();
 
-    std::string input;
-    while (true) {
-        std::cout << "gt_trainer> ";
-        if (!std::getline(std::cin, input)) break;
-        if (input.empty()) continue;
+    TerminalRawScope raw_scope;
+    auto last_status = std::chrono::steady_clock::now();
 
-        char cmd = input[0];
-        if (cmd == 'q' || cmd == 'Q') {
-            std::cout << "[*] Quitting trainer CLI...\n";
-            break;
-        } else if (cmd == 'h' || cmd == 'H') {
-            trigger_health();
-        } else if (cmd == 'a' || cmd == 'A') {
-            trigger_ammo();
-        } else if (cmd == 'z' || cmd == 'Z') {
-            trigger_high_jump();
-        } else if (cmd == 's' || cmd == 'S') {
-            print_status();
-        } else {
-            std::cout << "Unknown command. Use: [H] Health, [A] Ammo, [Z] Jump, [S] Status, [Q] Quit\n";
+    if (!raw_scope.is_active()) {
+        // Fallback for non-TTY / piped input streams
+        std::string line;
+        while (g_running && std::getline(std::cin, line)) {
+            if (line.empty()) continue;
+            char cmd = line[0];
+            if (cmd == 'q' || cmd == 'Q') {
+                std::cout << "[*] Quitting trainer CLI...\n";
+                break;
+            } else if (cmd == 'h' || cmd == 'H') {
+                trigger_health();
+            } else if (cmd == 'a' || cmd == 'A') {
+                trigger_ammo();
+            } else if (cmd == 'z' || cmd == 'Z') {
+                trigger_high_jump();
+            } else if (cmd == 's' || cmd == 'S') {
+                print_status();
+            }
+        }
+    } else {
+        // Active real-time polling loop
+        while (g_running) {
+#if defined(_WIN32)
+            // 1. Windows global hotkey detection (detects hotkeys even when in-game window has focus)
+            for (auto& b : bindings) {
+                if (!b.ce_keys.empty()) {
+                    bool down = is_combo_down(b.ce_keys);
+                    if (down && !b.prev_down) {
+                        if (stdout_tty) std::cout << "\n";
+                        std::cout << ">>> [GLOBAL IN-GAME HOTKEY: " << format_hotkey(b.ce_keys) << "] " << b.name << "\n";
+                        b.trigger();
+                    }
+                    b.prev_down = down;
+                }
+            }
+#endif
+
+            // 2. Non-blocking key hit detection (50ms select/poll)
+            int ch = poll_key(50);
+            if (ch != -1) {
+                if (ch == 'q' || ch == 'Q' || ch == 3 /* Ctrl+C */ || ch == 27 /* ESC */) {
+                    if (stdout_tty) std::cout << "\n";
+                    std::cout << "[*] Quitting trainer CLI...\n";
+                    g_running = false;
+                    break;
+                } else if (ch == 's' || ch == 'S') {
+                    if (stdout_tty) std::cout << "\n";
+                    print_status();
+                } else {
+                    bool matched = false;
+                    for (auto& b : bindings) {
+                        if (ch == b.cli_key ||
+                            ch == std::toupper(static_cast<unsigned char>(b.cli_key)) ||
+                            (b.posix_ctrl_key > 0 && ch == b.posix_ctrl_key)) {
+                            if (stdout_tty) std::cout << "\n";
+                            std::cout << ">>> [HOTKEY PRESSED: " << static_cast<char>(std::toupper(b.cli_key)) << "] " << b.name << "\n";
+                            b.trigger();
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) {
+                        if (stdout_tty) std::cout << "\n";
+                        std::cout << "[!] Unbound key pressed: '" << static_cast<char>(ch)
+                                  << "'. Controls: [H] Health, [A] Ammo, [Z] Jump, [S] Status, [Q] Quit\n";
+                    }
+                }
+            }
+
+            // 3. Real-time status ticker every 1 second
+            auto now = std::chrono::steady_clock::now();
+            if (now - last_status >= std::chrono::seconds(1)) {
+                last_status = now;
+                auto h = session->read<std::uint32_t>(resolved_health.value());
+                auto a = session->read<std::uint32_t>(resolved_ammo.value());
+                auto z = session->read<float>(resolved_zcord.value());
+                if (stdout_tty) {
+                    std::cout << "[Loop Active] Health: "
+                              << (h ? std::to_string(h.value()) : "ERR")
+                              << " | Ammo: " << (a ? std::to_string(a.value()) : "ERR")
+                              << (ammo_frozen ? " [FROZEN: UNLIMITED]" : " [NORMAL]")
+                              << " | ZCord: " << std::fixed << std::setprecision(2) << (z ? z.value() : 0.0f)
+                              << " | (Press [H], [A], [Z], or [Q] to quit)\r" << std::flush;
+                }
+            }
         }
     }
 
     freeze->cancel_all();
+    std::cout << "\n[+] Trainer closed cleanly. All freeze locks removed.\n";
     return 0;
 }
