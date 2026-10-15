@@ -65,11 +65,22 @@ Result<void> FreezeManager::freeze(FreezeRequest request) {
         std::shared_ptr<Entry> entry;
         {
             std::lock_guard<std::mutex> lock(entries_mutex_);
-            if (entries_.count(request.id)) {
-                return Result<void>::failure(make_error(
-                    ErrorCode::invalid_entry_id,
-                    "freeze id already active: " + request.id,
-                    "FreezeManager::freeze", request.address));
+            auto existing = entries_.find(request.id);
+            if (existing != entries_.end()) {
+                // Keep stopped entries available for restore until a new freeze
+                // explicitly replaces their snapshot using the same ID.
+                if (existing->second->active.load()) {
+                    return Result<void>::failure(make_error(
+                        ErrorCode::invalid_entry_id,
+                        "freeze id already active: " + request.id,
+                        "FreezeManager::freeze", request.address));
+                }
+                // unfreeze/restore clears active only after the worker joined.
+                // This entry is now quiescent and safe to replace.
+                if (existing->second->worker.joinable()) {
+                    existing->second->worker.join();
+                }
+                entries_.erase(existing);
             }
             const auto initial = session_->read_bytes(request.address, request.size);
             if (!initial) {
