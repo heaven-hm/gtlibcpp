@@ -237,9 +237,11 @@ TEST_CASE(e2e_agent_jsonrpc_full_control_plane) {
     std::string status_out = call("status", R"({"id":"e2e_freeze"})", "5");
     REQUIRE(status_out.find("\"error\"") == std::string::npos);
 
-    // 6. unfreeze
+    // 6. unauthenticated unfreeze must be denied; trusted host stops its own worker
     std::string unfreeze_out = call("unfreeze", R"({"id":"e2e_freeze"})", "6");
-    REQUIRE(unfreeze_out.find("\"error\"") == std::string::npos);
+    REQUIRE(unfreeze_out.find("\"error\"") != std::string::npos);
+
+    REQUIRE(freeze_mgr->unfreeze("e2e_freeze"));
 
     // 7. kill_switch
     std::string kill_out = call("kill_switch", R"({"engage":true,"reason":"halt"})", "7");
