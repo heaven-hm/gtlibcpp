@@ -77,6 +77,218 @@ int main() {
 }
 ```
 
+## Find a game process, scan memory, read and write (Windows)
+
+These examples are for **authorized offline games and your own test programs**.
+The supported `gtlibcpp::MemorySession` API can read/write known addresses
+and resolve pointer chains. **GTLibCpp does not currently expose a general
+value-scanning API**; the scanner example below uses Windows APIs to discover
+candidate addresses, then uses GTLibCpp to read them.
+
+### 1. Locate the running game
+
+Open PowerShell while the offline game or test program is running:
+
+```powershell
+Get-Process | Where-Object ProcessName -Like '*YourGame*' |
+    Select-Object Id, ProcessName, Path
+```
+
+Record the PID, full executable path and architecture (x86 vs x64).
+Addresses below are examples only. They are **not** known offsets for any game.
+
+### 2. Attach and read a typed value
+
+```cpp
+#include "gtlibcpp/windows_backend.hpp"
+#include "gtlibcpp/memory_session.hpp"
+#include <cstdint>
+#include <iostream>
+
+int main() {
+    gtlibcpp::WindowsBackendOptions opts{};
+    opts.pid = 1234; // Your actual game/test-process PID
+    opts.image_path = R"(C:\Games\YourGame\game.exe)";
+    opts.architecture = gtlibcpp::Architecture::x64; // Use x86 for 32-bit games
+    opts.read_only = true; // Least privilege
+
+    auto backend = gtlibcpp::make_windows_backend(opts);
+    if (!backend) {
+        std::cerr << "Cannot attach: check PID and OS permissions\n";
+        return 1;
+    }
+    gtlibcpp::MemorySession session(backend);
+
+    constexpr gtlibcpp::Address address = 0x12345678; // Replace after discovery
+    auto ammo = session.read<std::uint32_t>(address);
+    if (!ammo) {
+        std::cerr << "Read failed: " << ammo.error().message << '\n';
+        return 2;
+    }
+    std::cout << "Value: " << ammo.value() << '\n';
+}
+```
+
+A successful memory read does **not** prove the address contains ammunition.
+Validate candidate addresses against changes in actual game state.
+
+### 3. Scan for ammunition (unknown address)
+
+Suppose the game displays **100** rounds. Scan readable committed pages
+for 4-byte values equal to 100, fire three rounds, then recheck only the
+matching addresses for **97**. Repeat with further values to reduce false
+positives.
+
+This compact Windows-only helper uses `VirtualQueryEx` to enumerate pages,
+and `MemorySession::read_bytes` to read them. Call it after creating a
+read-only `session` as above. A separate process handle is needed for
+`VirtualQueryEx`; close that handle after scanning.
+
+```cpp
+#include <windows.h>
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <vector>
+
+// Supply a process handle opened with PROCESS_QUERY_INFORMATION | PROCESS_VM_READ.
+std::vector<gtlibcpp::Address> scan_u32(
+    gtlibcpp::MemorySession& session, HANDLE process,
+    std::uint32_t target) {
+    std::vector<gtlibcpp::Address> matches;
+    MEMORY_BASIC_INFORMATION mbi{};
+    std::uintptr_t cursor = 0;
+    std::size_t budget = 64u * 1024u * 1024u; // Bound the demo scan
+    while (budget >= 4 &&
+           VirtualQueryEx(process, reinterpret_cast<LPCVOID>(cursor),
+                          &mbi, sizeof(mbi)) == sizeof(mbi)) {
+        const auto base = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress);
+        if (!mbi.RegionSize || mbi.RegionSize > UINTPTR_MAX - base) break;
+        const auto end = base + mbi.RegionSize;
+        const DWORD p = mbi.Protect;
+        const bool readable = mbi.State == MEM_COMMIT &&
+            !(p & (PAGE_GUARD | PAGE_NOACCESS)) &&
+            (p & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                  PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
+                  PAGE_EXECUTE_WRITECOPY));
+        if (readable) {
+            for (auto addr = base; addr <= end - std::min<std::size_t>(4, mbi.RegionSize)
+                 && budget >= 4;) {
+                const auto size = std::min<std::size_t>(
+                    {4096, end - addr, budget});
+                if (size < 4) break;
+                auto bytes = session.read_bytes(addr, size);
+                if (bytes && bytes.value().size() == size) {
+                    for (std::size_t i = 0; i + 4 <= size; i += 4) {
+                        std::uint32_t value;
+                        std::memcpy(&value, bytes.value().data() + i, 4);
+                        if (value == target) matches.push_back(addr + i);
+                    }
+                }
+                budget -= size;
+                addr += size;
+            }
+        }
+        if (end <= cursor) break;
+        cursor = end;
+    }
+    return matches;
+}
+
+std::vector<gtlibcpp::Address> rescan_u32(
+    gtlibcpp::MemorySession& session,
+    const std::vector<gtlibcpp::Address>& candidates,
+    std::uint32_t expected) {
+    std::vector<gtlibcpp::Address> results;
+    for (auto address : candidates) {
+        auto value = session.read<std::uint32_t>(address);
+        if (value && value.value() == expected)
+            results.push_back(address);
+    }
+    return results;
+}
+
+// Usage in main(), after creating session:
+// HANDLE query = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+//                            FALSE, opts.pid);
+// if (!query) return 3;
+// auto candidates = scan_u32(session, query, 100);
+// CloseHandle(query);
+// // Fire three rounds in-game (100 -> 97), then:
+// candidates = rescan_u32(session, candidates, 97);
+```
+
+This is a **basic teaching scanner**, not a complete Cheat Engine substitute.
+It uses a limited 64 MiB budget, may miss unaligned or cross-chunk values,
+and is not designed to handle every memory-protection edge case. Only trust
+addresses you independently validate.
+
+### 4. Write, read back, and restore (explicitly authorized targets)
+
+Create a **separate** writable backend only after the target is approved.
+Direct `MemorySession::write` does **not** automatically enforce the agent's
+`Policy::authorize` checks. Apps exposing these operations to other users
+or agents must enforce target identity, approval, limits and auditing.
+
+```cpp
+gtlibcpp::WindowsBackendOptions write_opts{};
+write_opts.pid = 1234;
+write_opts.image_path = R"(C:\Games\YourGame\game.exe)";
+write_opts.architecture = gtlibcpp::Architecture::x64;
+write_opts.read_only = false; // Only for a target you are authorized to modify
+
+auto writable_backend = gtlibcpp::make_windows_backend(write_opts);
+if (!writable_backend) return 1;
+gtlibcpp::MemorySession writable(writable_backend);
+
+constexpr gtlibcpp::Address confirmed_ammo = 0x12345678; // Example only
+auto before = writable.read<std::uint32_t>(confirmed_ammo);
+if (!before) return 2;
+
+// Typed write + readback verification:
+auto updated = writable.compare_write_verify<std::uint32_t>(
+    confirmed_ammo, 999u);
+if (!updated) {
+    std::cerr << "Write failed: " << updated.error().message << '\n';
+    return 3;
+}
+auto after = writable.read<std::uint32_t>(confirmed_ammo);
+if (!after) return 4;
+std::cout << "Before: " << before.value()
+          << ", after: " << after.value() << '\n';
+
+// Restore original bytes before exit.
+auto restored = writable.compare_write_verify<std::uint32_t>(
+    confirmed_ammo, before.value());
+if (!restored) return 5;
+```
+
+`compare_write_verify` performs a write and readback, **not an atomic CAS**.
+It does not prove in-game effects or that addresses survive a restart.
+
+### 5. Dynamic addresses, pointers, freezing and other operations
+
+```cpp
+// Pointer-chain offsets need to be discovered and validated for your game.
+// This API dereferences each (current + offset) step.
+auto address = session.resolve_pointer_chain(module_base, {0x10, 0x20});
+if (address) {
+    auto health = session.read<float>(address.value());
+}
+
+// See the linked documentation for:
+// read_bytes(address, length) — bounded raw read
+// read_string(address, capacity, require_nul) — bounded string read
+// read_offsets(base, offsets, size) — batch read at independent offsets
+// write_offsets(base, offsets, value) — batch writes, not pointer traversal
+// FreezeManager — periodically write and later restore original value
+```
+
+See [API reference](docs/API.md), [freeze and restore examples](docs/EXAMPLES.md),
+[agent authorization](docs/POLICY.md) and [migration guidance](docs/MIGRATION.md).
+On Linux and macOS the portable core builds, but this particular process
+discovery and scanning example requires Windows.
+
 ## Build
 
 ```
