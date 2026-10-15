@@ -22,16 +22,16 @@ inline std::uint32_t find_game_process(std::string_view executable_name) {
         wanted += ".exe";
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE) return 0;
-    PROCESSENTRY32A entry{};
+    PROCESSENTRY32 entry{};
     entry.dwSize = sizeof(entry);
     std::uint32_t result = 0;
-    if (Process32FirstA(snapshot, &entry)) {
+    if (Process32First(snapshot, &entry)) {
         do {
             if (_stricmp(entry.szExeFile, wanted.c_str()) == 0) {
                 result = entry.th32ProcessID;
                 break;
             }
-        } while (Process32NextA(snapshot, &entry));
+        } while (Process32Next(snapshot, &entry));
     }
     CloseHandle(snapshot);
     return result;
