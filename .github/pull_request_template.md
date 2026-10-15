@@ -33,4 +33,4 @@ Paste the exact commit SHA, relevant commands/results, and links to CI runs:
 
 ## Merge gate
 
-**Do not merge** on green CI alone. The author must describe remaining uncertainties; no P0/P1 finding in the PR's changed functionality can remain unresolved. A reviewer or maintainer must explicitly approve merging to `develop` or `master`. Do not auto-merge on AI review output alone.
+**Do not merge** on green CI alone. The author must describe remaining uncertainties; no P0/P1 finding in the PR's changed functionality can remain unresolved. A reviewer or maintainer must explicitly approve merging to `develop` or `master`. Bot/AI reviews are advisory and **must not count as independent human reviewer approval**. Do not auto-merge on AI review output alone.
