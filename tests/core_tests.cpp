@@ -327,6 +327,40 @@ GTLIBCPP_TEST(freeze_interval_honours_short_values) {
     freeze.cancel_all();
 }
 
+GTLIBCPP_TEST(hardening_rejects_invalid_manifest_architecture) {
+    gtlibcpp::TargetIdentity identity{};
+    identity.pid = 1;
+    identity.image_path = "fixture.exe";
+    identity.architecture = gtlibcpp::Architecture::x64;
+    gtlibcpp::TargetManifest manifest{};
+    manifest.image_path = "fixture.exe";
+    manifest.architecture = "X64";
+    GTLIBCPP_REQUIRE(!manifest.matches(identity));
+    manifest.architecture = "wrong";
+    GTLIBCPP_REQUIRE(!manifest.matches(identity));
+    manifest.architecture = "x64";
+    GTLIBCPP_REQUIRE(manifest.matches(identity));
+}
+
+GTLIBCPP_TEST(hardening_rejects_incorrect_freeze_type_size) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    auto session = std::make_shared<gtlibcpp::MemorySession>(backend);
+    gtlibcpp::FreezeManager freeze(session);
+    const std::uint64_t initial = 0;
+    backend->put(0xF100, &initial, sizeof(initial));
+    gtlibcpp::FreezeRequest request;
+    request.id = "invalid-size";
+    request.address = 0xF100;
+    request.type_name = "double";
+    request.size = 4;
+    GTLIBCPP_REQUIRE(!freeze.freeze(request));
+    request.type_name = "nonsense";
+    GTLIBCPP_REQUIRE(!freeze.freeze(request));
+    request.type_name = "uint32";
+    GTLIBCPP_REQUIRE(freeze.freeze(request));
+    GTLIBCPP_REQUIRE(freeze.unfreeze(request.id));
+}
+
 } // namespace
 
 int main() {
