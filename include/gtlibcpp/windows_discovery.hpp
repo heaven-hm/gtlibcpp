@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
+#include "gtlibcpp/types.hpp"
 
 namespace gtlibcpp {
 
@@ -61,6 +63,67 @@ inline std::string get_process_image_path(std::uint32_t pid) {
     if (!ok || !length) return {};
     path.resize(length);
     return path;
+}
+
+struct MemoryRegion {
+    Address base_address{0};
+    std::size_t size{0};
+    bool is_readable{false};
+    bool is_writable{false};
+    bool is_executable{false};
+};
+
+inline std::vector<MemoryRegion> enumerate_memory_regions(HANDLE process, bool writable_only = false) {
+    std::vector<MemoryRegion> regions;
+    if (!process) return regions;
+
+    std::uintptr_t current = 0;
+    MEMORY_BASIC_INFORMATION mbi{};
+
+    while (VirtualQueryEx(process, reinterpret_cast<LPCVOID>(current), &mbi, sizeof(mbi)) != 0) {
+        const bool is_commit = (mbi.State & MEM_COMMIT) != 0;
+        const bool is_guard = (mbi.Protect & PAGE_GUARD) != 0;
+        const bool is_noaccess = (mbi.Protect & PAGE_NOACCESS) != 0;
+
+        if (is_commit && !is_guard && !is_noaccess) {
+            const DWORD prot = mbi.Protect & 0xFF;
+            const bool readable = (prot == PAGE_READONLY || prot == PAGE_READWRITE ||
+                                   prot == PAGE_WRITECOPY || prot == PAGE_EXECUTE_READ ||
+                                   prot == PAGE_EXECUTE_READWRITE || prot == PAGE_EXECUTE_WRITECOPY);
+            const bool writable = (prot == PAGE_READWRITE || prot == PAGE_WRITECOPY ||
+                                   prot == PAGE_EXECUTE_READWRITE || prot == PAGE_EXECUTE_WRITECOPY);
+            const bool executable = (prot == PAGE_EXECUTE || prot == PAGE_EXECUTE_READ ||
+                                     prot == PAGE_EXECUTE_READWRITE || prot == PAGE_EXECUTE_WRITECOPY);
+
+            if (readable && (!writable_only || writable)) {
+                MemoryRegion r{};
+                r.base_address = reinterpret_cast<Address>(mbi.BaseAddress);
+                r.size = mbi.RegionSize;
+                r.is_readable = readable;
+                r.is_writable = writable;
+                r.is_executable = executable;
+                regions.push_back(r);
+            }
+        }
+
+        const std::uintptr_t next = reinterpret_cast<std::uintptr_t>(mbi.BaseAddress) + mbi.RegionSize;
+        if (next <= current) break;
+        current = next;
+    }
+
+    return regions;
+}
+
+inline std::vector<MemoryRegion> enumerate_process_regions(std::uint32_t pid, bool writable_only = false) {
+    if (!pid) return {};
+    HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (!process) {
+        process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    }
+    if (!process) return {};
+    auto regions = enumerate_memory_regions(process, writable_only);
+    CloseHandle(process);
+    return regions;
 }
 
 } // namespace gtlibcpp

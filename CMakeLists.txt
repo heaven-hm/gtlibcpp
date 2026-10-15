@@ -132,10 +132,18 @@ endif()
 
 if(GTLIBCPP_BUILD_DEMOS)
     if(WIN32)
-        add_executable(IGITrainer IGITrainer.cpp)
-        target_link_libraries(IGITrainer PRIVATE gtlibcpp::win32)
-        add_executable(GenericTrainer GenericTrainer.cpp)
-        target_link_libraries(GenericTrainer PRIVATE gtlibcpp::win32)
+        add_library(gtlibc_legacy STATIC
+            libs/gtlibc/src/GTLibc.cpp
+            libs/gtlibc/src/CEParser.cpp
+        )
+        target_include_directories(gtlibc_legacy PUBLIC libs/gtlibc/include)
+        target_link_libraries(gtlibc_legacy PUBLIC psapi)
+
+        add_executable(IGITrainer demos/IGITrainer.cpp)
+        target_link_libraries(IGITrainer PRIVATE gtlibc_legacy gtlibcpp::win32)
+
+        add_executable(GenericTrainer demos/GenericTrainer.cpp)
+        target_link_libraries(GenericTrainer PRIVATE gtlibc_legacy gtlibcpp::win32)
     else()
         message(STATUS "Demo trainers are Windows-only; skipping on ${CMAKE_SYSTEM_NAME}")
     endif()

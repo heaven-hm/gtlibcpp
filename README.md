@@ -1,6 +1,6 @@
 # GTLibCpp
 
-C++17 memory operations and a local JSON-RPC agent service for **authorized offline** game trainers and test processes. The legacy `GTLibc.*` interface remains available; `gtlibcpp::` is the supported API.
+C++17 memory operations and a local JSON-RPC agent service for **authorized offline** game trainers and test processes. The legacy `GTLibc.*` Win32 trainer surface is preserved under `libs/gtlibc/` for backwards compatibility; `gtlibcpp::` in `include/gtlibcpp/` and `src/` is the supported API.
 
 [Windows CI](https://github.com/heaven-hm/gtlibcpp/actions) · [API](docs/API.md) · [Examples](docs/EXAMPLES.md) · [Security](SECURITY.md) · [License](LICENSE)
 
