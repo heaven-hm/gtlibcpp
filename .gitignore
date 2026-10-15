@@ -19,3 +19,6 @@ compile_commands.json
 package/
 *.zip
 *.tar.*
+.openqodex/
+.commandcode/
+.lavish/
