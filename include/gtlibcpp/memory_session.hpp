@@ -199,14 +199,22 @@ public:
         std::vector<Address> completed;
         std::vector<Address> attempted;
         for (const auto offset : offsets) {
-            const auto written = write<T>(base + offset, value);
-            attempted.push_back(base + offset);
+            if (offset > (std::numeric_limits<Address>::max)() - base) {
+                return Result<BatchResult>::success(BatchResult::partial(
+                    std::move(completed), std::move(attempted),
+                    make_error(ErrorCode::invalid_address,
+                               "batch write address overflow",
+                               "MemorySession::write_offsets", base)));
+            }
+            const Address target = base + offset;
+            const auto written = write<T>(target, value);
+            attempted.push_back(target);
             if (!written) {
                 return Result<BatchResult>::success(BatchResult::partial(
                     std::move(completed), std::move(attempted),
                     written.error()));
             }
-            completed.push_back(base + offset);
+            completed.push_back(target);
         }
         return Result<BatchResult>::success(BatchResult::ok_full(std::move(completed)));
     }
@@ -393,6 +401,13 @@ MemorySession::read_offsets(Address base, const std::vector<Address>& offsets, s
     std::vector<Address> completed;
     std::vector<Address> attempted;
     for (const auto offset : offsets) {
+        if (offset > (std::numeric_limits<Address>::max)() - base) {
+            return Result<BatchResult>::success(BatchResult::partial(
+                std::move(completed), std::move(attempted),
+                make_error(ErrorCode::invalid_address,
+                           "batch read address overflow",
+                           "MemorySession::read_offsets", base)));
+        }
         const Address target = base + offset;
         const auto r = read_bytes(target, size);
         attempted.push_back(target);
