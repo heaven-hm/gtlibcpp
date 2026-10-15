@@ -24,15 +24,18 @@ struct BatchResult {
     std::vector<Address> completed_addresses{};
     std::vector<Address> attempted_addresses{};
     std::optional<Error> failure{};
+    // The input offset rejected before a target address could be formed.
+    std::optional<Address> rejected_offset{};
 
     [[nodiscard]] static BatchResult ok_full(std::vector<Address> done) {
         return BatchResult{true, std::move(done), {}, std::nullopt};
     }
     [[nodiscard]] static BatchResult partial(std::vector<Address> done,
                                              std::vector<Address> attempted,
-                                             Error failure) {
+                                             Error failure,
+                                             std::optional<Address> rejected = std::nullopt) {
         return BatchResult{false, std::move(done), std::move(attempted),
-                           std::move(failure)};
+                           std::move(failure), rejected};
     }
 };
 
@@ -204,7 +207,7 @@ public:
                     std::move(completed), std::move(attempted),
                     make_error(ErrorCode::invalid_address,
                                "batch write address overflow",
-                               "MemorySession::write_offsets", base)));
+                               "MemorySession::write_offsets", base), offset));
             }
             const Address target = base + offset;
             const auto written = write<T>(target, value);
@@ -406,7 +409,7 @@ MemorySession::read_offsets(Address base, const std::vector<Address>& offsets, s
                 std::move(completed), std::move(attempted),
                 make_error(ErrorCode::invalid_address,
                            "batch read address overflow",
-                           "MemorySession::read_offsets", base)));
+                           "MemorySession::read_offsets", base), offset));
         }
         const Address target = base + offset;
         const auto r = read_bytes(target, size);
