@@ -106,6 +106,10 @@ install(FILES
 
 if(GTLIBCPP_BUILD_TESTS)
     enable_testing()
+    add_executable(gtlibcpp_log_header_compile tests/log_header_compile.cpp)
+    target_link_libraries(gtlibcpp_log_header_compile PRIVATE gtlibcpp::core)
+    add_test(NAME gtlibcpp_log_header_compile COMMAND gtlibcpp_log_header_compile)
+
     add_executable(gtlibcpp_core_tests tests/core_tests.cpp)
     target_link_libraries(gtlibcpp_core_tests PRIVATE gtlibcpp::core)
     add_test(NAME gtlibcpp_core_tests COMMAND gtlibcpp_core_tests)
