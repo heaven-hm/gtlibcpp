@@ -353,7 +353,9 @@ GTLIBCPP_TEST(hardening_rejects_incorrect_freeze_type_size) {
     request.address = 0xF100;
     request.type_name = "double";
     request.size = 4;
-    GTLIBCPP_REQUIRE(!freeze.freeze(request));
+    auto width_mismatch = freeze.freeze(request);
+    GTLIBCPP_REQUIRE(!width_mismatch);
+    GTLIBCPP_REQUIRE_EQ(width_mismatch.error().code, gtlibcpp::ErrorCode::invalid_size);
     request.type_name = "nonsense";
     GTLIBCPP_REQUIRE(!freeze.freeze(request));
     request.type_name = "uint32";
