@@ -100,7 +100,8 @@ T GTLibc::ReadAddressOffset(DWORD address, DWORD offset)
 /*
  * @brief Read address with offsets
  * @param address - Address to read
- * @param offsets - Offsets to add to address
+ * @param offsets - Pointer chain offsets; all but the final offset are pointer steps.
+ *                   The final offset addresses the typed value.
  * @return T - Value read from address
  *
  */
@@ -170,7 +171,7 @@ bool GTLibc::WriteAddressOffset(DWORD address, DWORD offset, const T &value)
 /*
  * @brief Write address with offsets
  * @param address - Address to write
- * @param offsets - Offsets to add to address
+ * @param offsets - Independent offsets relative to address (scatter writes, NOT a pointer chain).
  * @param value - Value to write to address
  * @return bool - True if write was successful else false
  *
