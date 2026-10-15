@@ -400,6 +400,82 @@ GTLIBCPP_TEST(candidate_refine_rejects_mismatched_and_overflowing_inputs) {
         session, {(std::numeric_limits<gtlibcpp::Address>::max)()}, {1},
         gtlibcpp::CandidateComparison::changed));
 }
+
+GTLIBCPP_TEST(first_scan_finds_exact_and_range_values) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    const std::uint32_t v1 = 100, v2 = 250, v3 = 100, v4 = 500;
+    backend->put(0x1000, &v1, sizeof(v1));
+    backend->put(0x1004, &v2, sizeof(v2));
+    backend->put(0x1008, &v3, sizeof(v3));
+    backend->put(0x100C, &v4, sizeof(v4));
+    gtlibcpp::MemorySession session(backend);
+
+    // Exact scan for 100
+    auto exact = gtlibcpp::first_scan<std::uint32_t>(
+        session, 0x1000, 16, gtlibcpp::ScanType::exact, 100);
+    GTLIBCPP_REQUIRE(exact);
+    GTLIBCPP_REQUIRE_EQ(exact.value().size(), 2u);
+    GTLIBCPP_REQUIRE_EQ(exact.value().addresses[0], 0x1000u);
+    GTLIBCPP_REQUIRE_EQ(exact.value().addresses[1], 0x1008u);
+
+    // Range scan for [200, 600]
+    auto range = gtlibcpp::first_scan<std::uint32_t>(
+        session, 0x1000, 16, gtlibcpp::ScanType::range, 200, 600);
+    GTLIBCPP_REQUIRE(range);
+    GTLIBCPP_REQUIRE_EQ(range.value().size(), 2u);
+    GTLIBCPP_REQUIRE_EQ(range.value().addresses[0], 0x1004u);
+    GTLIBCPP_REQUIRE_EQ(range.value().addresses[1], 0x100Cu);
+}
+
+GTLIBCPP_TEST(first_scan_and_next_scan_float_values) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    const float hp1 = 100.0f, hp2 = 50.0f;
+    backend->put(0x2000, &hp1, sizeof(hp1));
+    backend->put(0x2004, &hp2, sizeof(hp2));
+    gtlibcpp::MemorySession session(backend);
+
+    // Unknown initial scan
+    auto initial = gtlibcpp::first_scan<float>(
+        session, 0x2000, 8, gtlibcpp::ScanType::unknown_initial);
+    GTLIBCPP_REQUIRE(initial);
+    GTLIBCPP_REQUIRE_EQ(initial.value().size(), 2u);
+
+    // Mutate hp1 to 80.0f (decreased) and hp2 to 50.0f (unchanged)
+    const float hp1_new = 80.0f;
+    backend->put(0x2000, &hp1_new, sizeof(hp1_new));
+
+    auto decreased = gtlibcpp::next_scan<float>(
+        session, initial.value(), gtlibcpp::CandidateComparison::decreased);
+    GTLIBCPP_REQUIRE(decreased);
+    GTLIBCPP_REQUIRE_EQ(decreased.value().size(), 1u);
+    GTLIBCPP_REQUIRE_EQ(decreased.value().addresses[0], 0x2000u);
+
+    auto unchanged = gtlibcpp::next_scan<float>(
+        session, initial.value(), gtlibcpp::CandidateComparison::unchanged);
+    GTLIBCPP_REQUIRE(unchanged);
+    GTLIBCPP_REQUIRE_EQ(unchanged.value().size(), 1u);
+    GTLIBCPP_REQUIRE_EQ(unchanged.value().addresses[0], 0x2004u);
+}
+
+GTLIBCPP_TEST(first_scan_fails_closed_on_invalid_bounds_and_alignment) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    gtlibcpp::MemorySession session(backend);
+
+    // Zero range or address
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::first_scan<std::uint32_t>(
+        session, 0, 16, gtlibcpp::ScanType::exact, 10));
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::first_scan<std::uint32_t>(
+        session, 0x1000, 0, gtlibcpp::ScanType::exact, 10));
+
+    // Non power of two alignment
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::first_scan<std::uint32_t>(
+        session, 0x1000, 16, gtlibcpp::ScanType::exact, 10, 0, 3));
+
+    // Address space wrap
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::first_scan<std::uint32_t>(
+        session, (std::numeric_limits<gtlibcpp::Address>::max)() - 4, 16,
+        gtlibcpp::ScanType::exact, 10));
+}
 } // namespace
 
 int main() {
