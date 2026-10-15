@@ -80,3 +80,14 @@ target_include_directories(gtlibcpp_agent_trainer_client PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
 )
 
+# Live memory freeze trainer using MemorySession and FreezeManager
+add_executable(gtlibcpp_live_trainer gtlibcpp_live_trainer.cpp)
+target_link_libraries(gtlibcpp_live_trainer PRIVATE ${GTLIBCPP_CORE_TARGET})
+if(WIN32)
+    target_link_libraries(gtlibcpp_live_trainer PRIVATE ${GTLIBCPP_WIN32_TARGET})
+endif()
+target_include_directories(gtlibcpp_live_trainer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
+)
+
