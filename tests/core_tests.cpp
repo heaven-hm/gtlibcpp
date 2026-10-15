@@ -347,3 +347,23 @@ GTLIBCPP_TEST(result_error_does_not_require_default_constructible_value) {
     GTLIBCPP_REQUIRE(success);
     GTLIBCPP_REQUIRE_EQ(success.value().value, 42);
 }
+
+GTLIBCPP_TEST(freeze_id_can_be_reused_after_unfreeze) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    auto session = std::make_shared<gtlibcpp::MemorySession>(backend);
+    gtlibcpp::FreezeManager freeze(session);
+    const std::uint32_t original = 100;
+    backend->put(0xF000, &original, sizeof(original));
+    gtlibcpp::FreezeRequest request;
+    request.id = "reusable";
+    request.address = 0xF000;
+    request.type_name = "uint32";
+    request.value_u64 = 200;
+    request.interval = std::chrono::milliseconds(20);
+    GTLIBCPP_REQUIRE(freeze.freeze(request));
+    GTLIBCPP_REQUIRE(freeze.unfreeze(request.id));
+    request.value_u64 = 300;
+    GTLIBCPP_REQUIRE(freeze.freeze(request));
+    GTLIBCPP_REQUIRE(freeze.unfreeze(request.id));
+    GTLIBCPP_REQUIRE(freeze.restore(request.id));
+}
