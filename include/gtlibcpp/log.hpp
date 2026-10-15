@@ -68,7 +68,6 @@ public:
              const std::string& message,
              std::uint64_t address = 0,
              std::size_t bytes = 0) {
-        if (level < min_level_) return;
         LogEvent ev{};
         ev.level = level;
         ev.operation = operation;
@@ -81,6 +80,7 @@ public:
         void* user;
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            if (level < min_level_) return;
             sink = sink_ ? sink_ : &default_sink;
             user = user_;
         }
