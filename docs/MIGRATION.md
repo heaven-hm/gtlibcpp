@@ -210,3 +210,5 @@ continue to compile when `GTLIBCPP_BUILD_DEMOS=ON`. New code
 should target the `gtlibcpp::*` core and link against
 `gtlibcpp::gtlibcpp_core` (cross-platform) and
 `gtlibcpp::gtlibcpp_win32` (Windows-only).
+
+**Legacy offset warning:** `ReadAddressOffsets<T>` uses a pointer chain: `address` is a pointer slot, intermediate offsets dereference subsequent pointers, and the final offset locates the typed value. By contrast, `WriteAddressOffsets<T>` writes independently to `address + offset` for each offset (scatter semantics), not to the resolved pointer chain. Do not pair them for read-modify-write operations. Use `MemorySession::resolve_pointer_chain` and a typed `write` for chain-based modifications. The legacy activation method filters the cheat table by stable `CheatEntry::Id` and **removes** unselected entries; it does not toggle an entry in place.
