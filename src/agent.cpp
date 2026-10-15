@@ -503,6 +503,20 @@ JsonValue AgentService::on_preview(const JsonValue& params) {
     pa.expires_at_ms = pa.issued_at_ms + 5 * 60 * 1000;
     {
         std::lock_guard<std::mutex> lock(pending_mutex_);
+        // Expired previews must not accumulate indefinitely when abandoned.
+        for (auto it = pending_.begin(); it != pending_.end();) {
+            if (it->second.expires_at_ms < pa.issued_at_ms)
+                it = pending_.erase(it);
+            else
+                ++it;
+        }
+        // Bound even unexpired previews under a flood of unique request IDs.
+        if (pending_.find(request.request_id) == pending_.end()
+            && pending_.size() >= 1024) {
+            return error_response(request.request_id,
+                                  static_cast<std::int32_t>(ErrorCode::rate_limited),
+                                  "too many pending approvals");
+        }
         pending_[request.request_id] = pa;
     }
     JsonObject root;
