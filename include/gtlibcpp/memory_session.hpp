@@ -25,6 +25,9 @@ struct BatchResult {
     std::vector<Address> attempted_addresses{};
     std::optional<Error> failure{};
 
+    [[nodiscard]] bool ok() const noexcept { return complete; }
+    [[nodiscard]] explicit operator bool() const noexcept { return complete; }
+
     [[nodiscard]] static BatchResult ok_full(std::vector<Address> done) {
         return BatchResult{true, std::move(done), {}, std::nullopt};
     }
@@ -192,9 +195,22 @@ public:
     [[nodiscard]] Result<Address>
     resolve_pointer_chain(Address base, const std::vector<Address>& offsets);
 
+    /// Structured multi-offset read.
+    ///
+    /// Note: Returns Result<BatchResult>::success even if an offset read fails mid-batch,
+    /// enabling callers to inspect completed addresses. Callers must check BatchResult::complete
+    /// (or BatchResult::ok()) to verify full completion.
     [[nodiscard]] Result<BatchResult>
     read_offsets(Address base, const std::vector<Address>& offsets, std::size_t size);
 
+    /// Structured multi-offset typed write.
+    ///
+    /// IMPORTANT:
+    /// Returns Result<BatchResult>::success even if an offset write fails mid-batch.
+    /// A successful outer Result does NOT imply that all writes succeeded; checking only
+    /// `if (result.ok())` will not detect partial failures!
+    /// Callers MUST inspect `BatchResult::complete` (or `BatchResult::ok()`) and `BatchResult::failure`.
+    /// Earlier writes in the batch are committed and NOT rolled back on error.
     template <typename T>
     [[nodiscard]] Result<BatchResult>
     write_offsets(Address base,

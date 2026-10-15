@@ -109,9 +109,21 @@ GTLIBCPP_TEST(partial_write_is_reported) {
     const auto batch = session.write_offsets<std::uint32_t>(0x3000, {0, 4, 8}, value);
     GTLIBCPP_REQUIRE(batch);
     GTLIBCPP_REQUIRE_FALSE(batch.value().complete);
+    GTLIBCPP_REQUIRE_FALSE(batch.value().ok());
+    GTLIBCPP_REQUIRE_FALSE(static_cast<bool>(batch.value()));
     GTLIBCPP_REQUIRE_EQ(batch.value().completed_addresses.size(), 1u);
     GTLIBCPP_REQUIRE(batch.value().failure.has_value());
     GTLIBCPP_REQUIRE_EQ(batch.value().failure->address, 0x3004u);
+
+    // Full successful batch
+    backend->writes_before_failure = -1;
+    const auto full_batch = session.write_offsets<std::uint32_t>(0x3000, {0, 4, 8}, value);
+    GTLIBCPP_REQUIRE(full_batch);
+    GTLIBCPP_REQUIRE(full_batch.value().complete);
+    GTLIBCPP_REQUIRE(full_batch.value().ok());
+    GTLIBCPP_REQUIRE(static_cast<bool>(full_batch.value()));
+    GTLIBCPP_REQUIRE_EQ(full_batch.value().completed_addresses.size(), 3u);
+    GTLIBCPP_REQUIRE_FALSE(full_batch.value().failure.has_value());
 }
 
 GTLIBCPP_TEST(pointer_chain_returns_final_address) {
