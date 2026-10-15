@@ -210,7 +210,8 @@ does not require approval.
   "id": "7",
   "error": {
     "code": 5001,
-    "message": "restore RPC disabled until rollback authorization is implemented"
+    "message": "restore RPC disabled until rollback authorization is implemented",
+    "data": "policy_denied"
   }
 }
 ```
@@ -257,7 +258,8 @@ interpreted as an unsigned 64-bit integer; cast to `float` or
   "id": "9",
   "error": {
     "code": 5001,
-    "message": "unfreeze RPC disabled until scoped authorization is implemented"
+    "message": "unfreeze RPC disabled until scoped authorization is implemented",
+    "data": "policy_denied"
   }
 }
 ```

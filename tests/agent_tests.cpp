@@ -233,13 +233,17 @@ GTLIBCPP_TEST(restore_rpc_and_kill_release_are_denied) {
     GTLIBCPP_REQUIRE(unfreeze_req);
     auto unfrozen = gtlibcpp::json_decode(unfreeze_req.value());
     GTLIBCPP_REQUIRE(unfrozen && gtlibcpp::json_get(unfrozen.value(), "error"));
-    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*gtlibcpp::json_get(unfrozen.value(), "error"), "code"), 5001);
+    const auto* unfrozen_err = gtlibcpp::json_get(unfrozen.value(), "error");
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*unfrozen_err, "code"), 5001);
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_string(*unfrozen_err, "data"), "policy_denied");
 
     auto restore = svc->handle(R"({"jsonrpc":"2.0","id":"r","method":"restore","params":{"freeze_id":"freeze-1"}})");
     GTLIBCPP_REQUIRE(restore);
     auto restored = gtlibcpp::json_decode(restore.value());
     GTLIBCPP_REQUIRE(restored && gtlibcpp::json_get(restored.value(), "error"));
-    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*gtlibcpp::json_get(restored.value(), "error"), "code"), 5001);
+    const auto* restored_err = gtlibcpp::json_get(restored.value(), "error");
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*restored_err, "code"), 5001);
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_string(*restored_err, "data"), "policy_denied");
 
     auto engage = svc->handle(R"({"jsonrpc":"2.0","id":"k","method":"kill_switch","params":{"engage":true}})");
     GTLIBCPP_REQUIRE(engage);

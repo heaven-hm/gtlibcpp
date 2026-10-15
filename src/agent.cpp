@@ -636,9 +636,12 @@ JsonValue AgentService::on_restore(const JsonValue& params) {
     // An RPC caller must not be able to bypass mutation approval by restoring
     // a previously captured value. The trusted embedder can call
     // FreezeManager::restore directly after its own operator authorization.
+    const auto error = make_error(ErrorCode::policy_denied,
+                                  "restore RPC disabled until rollback authorization is implemented",
+                                  "AgentService::on_restore");
     return error_response(json_get_string(params, "request_id"),
-                          static_cast<std::int32_t>(ErrorCode::policy_denied),
-                          "restore RPC disabled until rollback authorization is implemented");
+                          static_cast<std::int32_t>(error.code),
+                          error.message, &error);
 }
 
 JsonValue AgentService::on_freeze(const JsonValue& params) {
