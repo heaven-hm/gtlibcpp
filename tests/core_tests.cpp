@@ -332,3 +332,18 @@ GTLIBCPP_TEST(freeze_interval_honours_short_values) {
 int main() {
     return GTLIBCPP_RUN_ALL();
 }
+
+GTLIBCPP_TEST(result_error_does_not_require_default_constructible_value) {
+    struct NonDefault {
+        explicit NonDefault(int v) : value(v) {}
+        int value;
+    };
+    auto failed = gtlibcpp::Result<NonDefault>::failure(
+        gtlibcpp::make_error(gtlibcpp::ErrorCode::invalid_type,
+                             "test failure", "nondefault.test"));
+    GTLIBCPP_REQUIRE(!failed);
+    GTLIBCPP_REQUIRE_EQ(failed.error().code, gtlibcpp::ErrorCode::invalid_type);
+    auto success = gtlibcpp::Result<NonDefault>::success(NonDefault(42));
+    GTLIBCPP_REQUIRE(success);
+    GTLIBCPP_REQUIRE_EQ(success.value().value, 42);
+}
