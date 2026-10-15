@@ -105,13 +105,14 @@ public:
     void engage(std::string reason) noexcept;
     void release() noexcept;
     [[nodiscard]] bool engaged() const noexcept;
-    [[nodiscard]] const std::string& reason() const noexcept;
+    [[nodiscard]] std::string reason() const;
 
 private:
     // Use std::atomic<bool> rather than std::atomic_flag for portability
     // with C++17: std::atomic_flag::test() is a C++20 extension and is
     // not available on MSVC or clang-cl in C++17 mode.
     std::atomic<bool> engaged_{false};
+    mutable std::mutex reason_mutex_{};
     std::string reason_{};
 };
 
