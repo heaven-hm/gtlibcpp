@@ -314,6 +314,7 @@ Windows-only backend and named-pipe transport are `gtlibcpp::gtlibcpp_win32`.
 | [docs/POLICY.md](docs/POLICY.md)                 | Manifest format, capability table, audit event format.  |
 | [docs/PARSER.md](docs/PARSER.md)                 | Cheat Engine 7.x subset, fail-closed kinds, examples.   |
 | [docs/AGENT.md](docs/AGENT.md)                   | JSON-RPC 2.0 surface, method reference, error codes.    |
+| [docs/GAME_MEMORY_GUIDE.md](docs/GAME_MEMORY_GUIDE.md) | Windows process/window discovery, x86/x64 examples, AoB scanning, diagnostics. |
 | [docs/EXAMPLES.md](docs/EXAMPLES.md)             | End-to-end usage examples (read, freeze, parse, agent).  |
 | [docs/MIGRATION.md](docs/MIGRATION.md)           | Migrating from the legacy `GTLibc.*` API to `gtlibcpp::*`. |
 

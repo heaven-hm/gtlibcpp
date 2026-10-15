@@ -8,8 +8,9 @@ find_package(gtlibcpp 1.0 REQUIRED CONFIG)
 
 if(WIN32)
     add_executable(inspect_and_read inspect_and_read.cpp)
-    target_link_libraries(inspect_and_read PRIVATE
-        gtlibcpp::gtlibcpp_core
-        gtlibcpp::gtlibcpp_win32
-    )
+    add_executable(discover_and_read discover_and_read.cpp)
+    add_executable(read_write_restore read_write_restore.cpp)
+    foreach(example_target IN ITEMS inspect_and_read discover_and_read read_write_restore)
+        target_link_libraries(${example_target} PRIVATE gtlibcpp::gtlibcpp_core gtlibcpp::gtlibcpp_win32)
+    endforeach()
 endif()

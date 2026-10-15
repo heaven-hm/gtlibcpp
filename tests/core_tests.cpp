@@ -13,6 +13,7 @@
 
 #include "gtlibcpp/freeze.hpp"
 #include "gtlibcpp/memory_session.hpp"
+#include "gtlibcpp/aob_scan.hpp"
 #include "gtlibcpp/policy.hpp"
 #include "gtlibcpp_test.hpp"
 
@@ -325,6 +326,17 @@ GTLIBCPP_TEST(freeze_interval_honours_short_values) {
     GTLIBCPP_REQUIRE(s);
     GTLIBCPP_REQUIRE(s.value().successful_rewrites >= 1u);
     freeze.cancel_all();
+}
+
+GTLIBCPP_TEST(aob_parser_accepts_wildcards_and_rejects_malformed_patterns) {
+    std::vector<int> pattern;
+    GTLIBCPP_REQUIRE(gtlibcpp::parse_aob("48 8B ?? 05", pattern));
+    GTLIBCPP_REQUIRE_EQ(pattern.size(), 4u);
+    GTLIBCPP_REQUIRE_EQ(pattern[0], 0x48);
+    GTLIBCPP_REQUIRE_EQ(pattern[2], -1);
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::parse_aob("4X", pattern));
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::parse_aob("48ZZ", pattern));
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::parse_aob("", pattern));
 }
 
 } // namespace
