@@ -48,8 +48,9 @@ Result<void> FreezeManager::freeze(FreezeRequest request) {
                 ErrorCode::invalid_address, "freeze address is 0",
                 "FreezeManager::freeze"));
         }
-        if (request.size == 0) request.size = size_for_type(request.type_name);
-        if (request.size == 0 || request.size > sizeof(std::uint64_t)) {
+        const std::size_t required_size = size_for_type(request.type_name);
+        if (request.size == 0) request.size = required_size;
+        if (required_size == 0 || request.size != required_size) {
             return Result<void>::failure(make_error(
                 ErrorCode::invalid_type, "unknown freeze type " + request.type_name,
                 "FreezeManager::freeze", request.address));
