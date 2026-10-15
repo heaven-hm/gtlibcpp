@@ -65,15 +65,20 @@ Result<void> RateLimiter::allow(const std::string& alias) {
 }
 
 void KillSwitch::engage(std::string reason) noexcept {
+    std::lock_guard<std::mutex> lock(reason_mutex_);
     reason_ = std::move(reason);
     engaged_.store(true, std::memory_order_release);
 }
 void KillSwitch::release() noexcept {
+    std::lock_guard<std::mutex> lock(reason_mutex_);
     engaged_.store(false, std::memory_order_release);
     reason_.clear();
 }
 bool KillSwitch::engaged() const noexcept { return engaged_.load(std::memory_order_acquire); }
-const std::string& KillSwitch::reason() const noexcept { return reason_; }
+std::string KillSwitch::reason() const {
+    std::lock_guard<std::mutex> lock(reason_mutex_);
+    return reason_;
+}
 
 Policy::Policy(std::vector<TargetManifest> manifests, AuditSink sink, void* user)
     : manifests_(std::move(manifests)), sink_(sink), sink_user_(user) {}
