@@ -100,7 +100,7 @@ T GTLibc::ReadAddressOffset(DWORD address, DWORD offset)
 /*
  * @brief Read address with offsets
  * @param address - Address to read
- * @param offsets - Pointer chain offsets; all but the final offset are pointer steps.
+ * @param offsets - Base is a pointer slot; intermediate offsets dereference pointers.
  *                   The final offset addresses the typed value.
  * @return T - Value read from address
  *
@@ -114,7 +114,15 @@ T GTLibc::ReadAddressOffsets(DWORD address, const std::vector<DWORD> &offsets)
 
     try
     {
-        DWORD currentAddress = address;
+        DWORD currentAddress = 0;
+        SIZE_T initialBytesRead = 0;
+        if (!gameHandle || !ReadProcessMemory(gameHandle,
+                reinterpret_cast<LPCVOID>(static_cast<std::uintptr_t>(address)),
+                &currentAddress, sizeof(currentAddress), &initialBytesRead)
+                || initialBytesRead != sizeof(currentAddress))
+            throw std::runtime_error("base pointer read failed");
+        if (currentAddress == 0)
+            throw std::runtime_error("null base pointer in chain");
         for (std::size_t i = 0; i + 1 < offsets.size(); ++i)
         {
             const DWORD offset = offsets[i];
