@@ -97,3 +97,11 @@ execution. A future opt-in patch/debug facility would require a separate
 threat model, identity and consent checks, rollback tests, and review for
 both x86/x64 targets. For memory edits today, use approved typed writes
 on data pages and confirm the expected preimage before mutation.
+
+## Cheat Engine design references (independent implementation)
+
+Cheat Engine's [memory-scan API](https://github.com/cheat-engine/cheat-engine/blob/master/Cheat%20Engine/LuaMemscan.pas) separates a first scan from subsequent candidate filtering and supports variable types, readable-region/protection filtering, scan bounds and alignment. GTLibCpp's new AoB helper adopts **only these general design principles**: explicit scan ranges, wildcard bytes, bounded reads, deterministic match limits, and error propagation. It is not an implementation of Cheat Engine's complete scanner (no unknown-initial or changed-value state machine yet).
+
+**Licensing:** The upstream Cheat Engine repository does not currently expose an unambiguous repository-wide redistribution license in its root. No Cheat Engine source was copied or bundled here. This implementation is original C++17; any future reuse of Cheat Engine code requires verifying the license and provenance first.
+
+Potential follow-ups: region-aware scanning with guard/protection filters, configurable alignment, multi-pass changed/unchanged/increased/decreased scanning, and module-relative signatures with cross-restart testing.
