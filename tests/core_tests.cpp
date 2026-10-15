@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -451,6 +452,41 @@ GTLIBCPP_TEST(freeze_id_can_be_reused_after_unfreeze) {
     GTLIBCPP_REQUIRE(freeze.freeze(request));
     GTLIBCPP_REQUIRE(freeze.unfreeze(request.id));
     GTLIBCPP_REQUIRE(freeze.restore(request.id));
+}
+
+GTLIBCPP_TEST(batch_write_rejects_address_wraparound) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    gtlibcpp::MemorySession session(backend);
+    constexpr gtlibcpp::Address base = 0x1000;
+    const auto bad_offset = (std::numeric_limits<gtlibcpp::Address>::max)();
+    const auto batch = session.write_offsets<std::uint32_t>(
+        base, {0, bad_offset}, static_cast<std::uint32_t>(123));
+    GTLIBCPP_REQUIRE(batch);
+    GTLIBCPP_REQUIRE_FALSE(batch.value().complete);
+    GTLIBCPP_REQUIRE_EQ(batch.value().completed_addresses.size(), 1u);
+    GTLIBCPP_REQUIRE(batch.value().failure.has_value());
+    GTLIBCPP_REQUIRE_EQ(batch.value().failure->code, gtlibcpp::ErrorCode::invalid_address);
+    GTLIBCPP_REQUIRE(batch.value().rejected_offset.has_value());
+    GTLIBCPP_REQUIRE_EQ(*batch.value().rejected_offset, bad_offset);
+    GTLIBCPP_REQUIRE_EQ(backend->memory.count(0x0FFF), 0u);
+    GTLIBCPP_REQUIRE_EQ(session.read<std::uint32_t>(base).value(), 123u);
+}
+
+GTLIBCPP_TEST(batch_read_rejects_address_wraparound) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    gtlibcpp::MemorySession session(backend);
+    constexpr gtlibcpp::Address base = 0x1000;
+    const auto bad_offset = (std::numeric_limits<gtlibcpp::Address>::max)();
+    const std::uint32_t value = 321;
+    backend->put(base, &value, sizeof(value));
+    const auto batch = session.read_offsets(base, {0, bad_offset}, sizeof(value));
+    GTLIBCPP_REQUIRE(batch);
+    GTLIBCPP_REQUIRE_FALSE(batch.value().complete);
+    GTLIBCPP_REQUIRE_EQ(batch.value().completed_addresses.size(), 1u);
+    GTLIBCPP_REQUIRE(batch.value().failure.has_value());
+    GTLIBCPP_REQUIRE_EQ(batch.value().failure->code, gtlibcpp::ErrorCode::invalid_address);
+    GTLIBCPP_REQUIRE(batch.value().rejected_offset.has_value());
+    GTLIBCPP_REQUIRE_EQ(*batch.value().rejected_offset, bad_offset);
 }
 
 } // namespace
