@@ -7,7 +7,7 @@ project(gtlibcpp
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_EXPORT_COMPORTS ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(GTLIBCPP_BUILD_TESTS "Build the cross-platform regression test suite" ON)
 option(GTLIBCPP_BUILD_DEMOS  "Build the demo trainers" OFF)
