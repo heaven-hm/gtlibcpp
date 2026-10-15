@@ -127,6 +127,53 @@ GTLIBCPP_TEST(partial_write_is_reported) {
     GTLIBCPP_REQUIRE_FALSE(full_batch.value().failure.has_value());
 }
 
+GTLIBCPP_TEST(batch_write_rejects_overflowing_offset) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    gtlibcpp::MemorySession session(backend);
+    const gtlibcpp::Address base = (std::numeric_limits<gtlibcpp::Address>::max)() - 10;
+    const std::uint32_t val = 42;
+
+    // Single overflowing offset
+    const auto res1 = session.write_offsets<std::uint32_t>(base, {20}, val);
+    GTLIBCPP_REQUIRE(res1);
+    GTLIBCPP_REQUIRE_FALSE(res1.value().complete);
+    GTLIBCPP_REQUIRE(res1.value().failure.has_value());
+    GTLIBCPP_REQUIRE_EQ(res1.value().failure->code, gtlibcpp::ErrorCode::invalid_address);
+    GTLIBCPP_REQUIRE(res1.value().rejected_offset.has_value());
+    GTLIBCPP_REQUIRE_EQ(*res1.value().rejected_offset, 20u);
+    GTLIBCPP_REQUIRE_EQ(res1.value().completed_addresses.size(), 0u);
+
+    // Partial progress after a valid offset before an overflowing offset
+    const auto res2 = session.write_offsets<std::uint32_t>(base, {4, 20}, val);
+    GTLIBCPP_REQUIRE(res2);
+    GTLIBCPP_REQUIRE_FALSE(res2.value().complete);
+    GTLIBCPP_REQUIRE_EQ(res2.value().completed_addresses.size(), 1u);
+    GTLIBCPP_REQUIRE_EQ(res2.value().completed_addresses[0], base + 4);
+    GTLIBCPP_REQUIRE(res2.value().failure.has_value());
+    GTLIBCPP_REQUIRE_EQ(res2.value().failure->code, gtlibcpp::ErrorCode::invalid_address);
+    GTLIBCPP_REQUIRE(res2.value().rejected_offset.has_value());
+    GTLIBCPP_REQUIRE_EQ(*res2.value().rejected_offset, 20u);
+}
+
+GTLIBCPP_TEST(batch_read_rejects_overflowing_offset) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    gtlibcpp::MemorySession session(backend);
+    const gtlibcpp::Address base = (std::numeric_limits<gtlibcpp::Address>::max)() - 10;
+
+    // Partial progress after a valid offset before an overflowing offset
+    const std::uint32_t val = 999;
+    backend->put(base + 4, &val, sizeof(val));
+    const auto res = session.read_offsets(base, {4, 20}, sizeof(std::uint32_t));
+    GTLIBCPP_REQUIRE(res);
+    GTLIBCPP_REQUIRE_FALSE(res.value().complete);
+    GTLIBCPP_REQUIRE_EQ(res.value().completed_addresses.size(), 1u);
+    GTLIBCPP_REQUIRE_EQ(res.value().completed_addresses[0], base + 4);
+    GTLIBCPP_REQUIRE(res.value().failure.has_value());
+    GTLIBCPP_REQUIRE_EQ(res.value().failure->code, gtlibcpp::ErrorCode::invalid_address);
+    GTLIBCPP_REQUIRE(res.value().rejected_offset.has_value());
+    GTLIBCPP_REQUIRE_EQ(*res.value().rejected_offset, 20u);
+}
+
 GTLIBCPP_TEST(pointer_chain_returns_final_address) {
     auto backend = std::make_shared<FakeMemoryBackend>();
     gtlibcpp::MemorySession session(backend);

@@ -228,7 +228,8 @@ public:
                 return Result<BatchResult>::success(BatchResult::partial(
                     std::move(completed), std::move(attempted),
                     make_error(ErrorCode::invalid_address, "batch write address overflow",
-                               "MemorySession::write_offsets", base), offset));
+                               "MemorySession::write_offsets", base, sizeof(T)),
+                    offset));
             }
             const Address target = base + offset;
             const auto written = write<T>(target, value);
@@ -429,7 +430,8 @@ MemorySession::read_offsets(Address base, const std::vector<Address>& offsets, s
             return Result<BatchResult>::success(BatchResult::partial(
                 std::move(completed), std::move(attempted),
                 make_error(ErrorCode::invalid_address, "batch read address overflow",
-                           "MemorySession::read_offsets", base), offset));
+                           "MemorySession::read_offsets", base, size),
+                offset));
         }
         const Address target = base + offset;
         const auto r = read_bytes(target, size);
