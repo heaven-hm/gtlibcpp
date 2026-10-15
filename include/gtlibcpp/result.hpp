@@ -133,10 +133,7 @@ public:
         return Result(std::move(value));
     }
     static Result failure(Error error) {
-        Result r{};
-        r.storage_ = std::move(error);
-        r.has_value_ = false;
-        return r;
+        return Result(std::move(error));
     }
 
     [[nodiscard]] bool ok() const noexcept { return has_value_; }
@@ -183,7 +180,8 @@ public:
     }
 
 private:
-    Result() : storage_(T{}), has_value_(true) {}
+    explicit Result(Error error)
+        : storage_(std::in_place_index<1>, std::move(error)), has_value_(false) {}
     std::variant<T, Error> storage_;
     bool has_value_{true};
 };
