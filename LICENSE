@@ -1,21 +1,88 @@
-MIT License
+Heaven-HM Community Modding License — Version 1.0
 
-Copyright (c) 2023 HeavenHM
+Copyright © 2026 Heaven-HM. Earlier copyright notices remain valid.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+1. Scope and ownership
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This license applies to software, source code, and documentation for which
+Heaven-HM owns the copyright or has authority to grant this license, in
+versions that include this license notice (the "Covered Material").
+Copyright remains with the respective owners. No rights are granted beyond
+those expressly stated here. This license does not claim ownership of
+independently created mods or other output.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+2. Permitted use
+
+You may study, use, copy, and modify the Covered Material, and create and
+share free mods using it, for lawful, noncommercial purposes such as creative
+expression, education, accessibility, preservation, and community enjoyment,
+subject to the conditions below.
+
+3. Free sharing and attribution
+
+You may redistribute the Covered Material and your modifications without
+charge, provided you retain all copyright and third-party notices, include
+this license, identify your changes, and distribute the Covered Material and
+modifications to it under these same terms. Do not imply endorsement by the
+original authors. Recipients receive these permissions directly from the
+copyright holder; you may not grant broader permissions on its behalf.
+
+4. Noncommercial condition
+
+Without separate written permission from the copyright holder, you may not
+sell, commercially license, rent, or require payment to access the Covered
+Material, modified versions of it, or mods created using it. This includes
+paid bundles, subscriptions, and paid access to downloads. This condition
+governs permission to use the Covered Material; it does not transfer ownership
+of your independently created work to Heaven-HM.
+
+5. Prohibited conduct
+
+You may not use the Covered Material to commit or knowingly facilitate
+unlawful activity, distribute unlawfully obtained materials, infringe another
+person's rights, deploy malware, gain unauthorized access to systems, or
+intentionally cause real-world harm to people, property, or data. Fictional
+events within games do not constitute real-world harm under this clause.
+
+6. Third-party rights and previously granted permissions
+
+This license grants permission only for material the copyright holder is
+entitled to license. Game code, game assets, trademarks, dependencies,
+upstream code, and contributions owned by other authors remain subject to
+their respective rights and licenses. Preserve their notices and obtain any
+permissions required for those materials. Owning a copy of a game does not
+by itself grant permission to redistribute its assets.
+
+This license does not revoke or narrow permissions previously granted for
+earlier versions or material already received under another license.
+Preserved prior license texts and separately licensed files continue to
+apply to the material they cover. Statutory rights and exceptions are not
+restricted by this license. No trademark rights are granted.
+
+7. Violation and enforcement
+
+Permissions granted under this license terminate upon violation of its
+conditions. You must then stop activities that require permission under
+this license unless the copyright holder reinstates it in writing.
+Unauthorized use, copying, or distribution may lead to legal action where
+available under applicable law. Penalties and liability are not automatic.
+Termination does not cancel valid rights granted under another license.
+
+8. Warranty and liability
+
+THE COVERED MATERIAL IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, AND NONINFRINGEMENT, TO THE EXTENT PERMITTED BY LAW. TO THE EXTENT
+PERMITTED BY LAW, THE AUTHORS AND COPYRIGHT HOLDERS ARE NOT LIABLE FOR
+CLAIMS, DAMAGES, OR OTHER LIABILITY ARISING FROM THE COVERED MATERIAL OR
+ITS USE. THIS CLAUSE DOES NOT EXCLUDE LIABILITY THAT CANNOT LAWFULLY BE
+EXCLUDED.
+
+9. Separate permissions
+
+Commercial use or other permissions beyond this license require a separate
+written agreement with the relevant copyright holder. Contact Heaven-HM
+through https://github.com/heaven-hm. Silence is not permission.
+
+This is a custom source-available license, not an OSI-approved open-source
+license. It does not guarantee that every use of a mod is lawful.
