@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -325,6 +326,38 @@ GTLIBCPP_TEST(freeze_interval_honours_short_values) {
     GTLIBCPP_REQUIRE(s);
     GTLIBCPP_REQUIRE(s.value().successful_rewrites >= 1u);
     freeze.cancel_all();
+}
+
+GTLIBCPP_TEST(batch_write_rejects_address_wraparound) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    gtlibcpp::MemorySession session(backend);
+    constexpr gtlibcpp::Address base = 0x1000;
+    const auto batch = session.write_offsets<std::uint32_t>(
+        base, {0, (std::numeric_limits<gtlibcpp::Address>::max)()},
+        static_cast<std::uint32_t>(123));
+    GTLIBCPP_REQUIRE(batch);
+    GTLIBCPP_REQUIRE_FALSE(batch.value().complete);
+    GTLIBCPP_REQUIRE_EQ(batch.value().completed_addresses.size(), 1u);
+    GTLIBCPP_REQUIRE(batch.value().failure.has_value());
+    GTLIBCPP_REQUIRE_EQ(batch.value().failure->code, gtlibcpp::ErrorCode::invalid_address);
+    GTLIBCPP_REQUIRE_EQ(backend->memory.count(0x0FFF), 0u);
+    GTLIBCPP_REQUIRE_EQ(session.read<std::uint32_t>(base).value(), 123u);
+}
+
+GTLIBCPP_TEST(batch_read_rejects_address_wraparound) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    gtlibcpp::MemorySession session(backend);
+    constexpr gtlibcpp::Address base = 0x1000;
+    const std::uint32_t value = 321;
+    backend->put(base, &value, sizeof(value));
+    const auto batch = session.read_offsets(
+        base, {0, (std::numeric_limits<gtlibcpp::Address>::max)()},
+        sizeof(value));
+    GTLIBCPP_REQUIRE(batch);
+    GTLIBCPP_REQUIRE_FALSE(batch.value().complete);
+    GTLIBCPP_REQUIRE_EQ(batch.value().completed_addresses.size(), 1u);
+    GTLIBCPP_REQUIRE(batch.value().failure.has_value());
+    GTLIBCPP_REQUIRE_EQ(batch.value().failure->code, gtlibcpp::ErrorCode::invalid_address);
 }
 
 } // namespace
