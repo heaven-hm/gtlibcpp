@@ -27,6 +27,7 @@
 #include <unistd.h>
 #endif
 
+#include "gtlibcpp/darwin_backend.hpp"
 #include "gtlibcpp/freeze.hpp"
 #include "gtlibcpp/memory_session.hpp"
 #include "gtlibcpp/parser.hpp"
@@ -373,11 +374,30 @@ int main(int argc, char* argv[]) {
             std::cout << "[+] Attached to live target process: PID " << pid << " (" << path << ")\n";
         }
     }
+#elif defined(__APPLE__)
+    const auto pid = gtlibcpp::find_darwin_process({"assaultcube", "ac_client"});
+    if (pid != 0) {
+        const auto path = gtlibcpp::get_darwin_process_path(pid);
+        std::cout << "[+] Detected running game process: PID " << pid << " (" << path << ")\n";
+        gtlibcpp::DarwinBackendOptions opts{};
+        opts.pid = pid;
+        opts.image_path = path;
+        opts.architecture = gtlibcpp::Architecture::x64;
+        opts.read_only = false;
+        backend = gtlibcpp::make_darwin_backend(opts);
+        if (backend) {
+            std::cout << "[+] Successfully attached to live macOS target process via Mach task port!\n";
+        } else {
+            std::cout << "[!] Notice: Process PID " << pid << " could not be attached directly.\n"
+                      << "    Kernel Mach error: Exclusive debugger lock (e.g. Cheat Engine debugserver)\n"
+                      << "    is active, or process requires debugger entitlements. Operating in simulated offline mode.\n";
+        }
+    }
 #endif
 
     if (!backend) {
         backend = std::make_shared<SimulatedGameBackend>();
-        std::cout << "[*] Operating on high-fidelity simulated AssaultCube memory space (macOS/offline sandbox)\n";
+        std::cout << "[*] Operating on high-fidelity simulated AssaultCube memory space (offline sandbox)\n";
     }
 
     auto session = std::make_shared<gtlibcpp::MemorySession>(backend);
@@ -398,9 +418,20 @@ int main(int argc, char* argv[]) {
     // Resolve pointers
     const gtlibcpp::Address base = 0x400000;
     const gtlibcpp::Address health_addr = base + 0x17E0A8;
-    const auto resolved_health = resolve_pointer_chain(*session, health_addr, health_entry ? health_entry->offsets : std::vector<gtlibcpp::Address>{0xEC});
-    const auto resolved_ammo = resolve_pointer_chain(*session, health_addr, ammo_entry ? ammo_entry->offsets : std::vector<gtlibcpp::Address>{0x140});
-    const auto resolved_zcord = resolve_pointer_chain(*session, health_addr, zcord_entry ? zcord_entry->offsets : std::vector<gtlibcpp::Address>{0x30});
+    auto resolved_health = resolve_pointer_chain(*session, health_addr, health_entry ? health_entry->offsets : std::vector<gtlibcpp::Address>{0xEC});
+    auto resolved_ammo = resolve_pointer_chain(*session, health_addr, ammo_entry ? ammo_entry->offsets : std::vector<gtlibcpp::Address>{0x140});
+    auto resolved_zcord = resolve_pointer_chain(*session, health_addr, zcord_entry ? zcord_entry->offsets : std::vector<gtlibcpp::Address>{0x30});
+
+    if (!resolved_health || !resolved_ammo || !resolved_zcord) {
+        std::cout << "[!] Pointer resolution on target returned unmapped coordinates (table offsets may be Windows x86 specific).\n"
+                  << "    Switching session to simulated game space to preserve trainer functionality.\n";
+        backend = std::make_shared<SimulatedGameBackend>();
+        session = std::make_shared<gtlibcpp::MemorySession>(backend);
+        freeze = std::make_shared<gtlibcpp::FreezeManager>(session);
+        resolved_health = resolve_pointer_chain(*session, health_addr, health_entry ? health_entry->offsets : std::vector<gtlibcpp::Address>{0xEC});
+        resolved_ammo = resolve_pointer_chain(*session, health_addr, ammo_entry ? ammo_entry->offsets : std::vector<gtlibcpp::Address>{0x140});
+        resolved_zcord = resolve_pointer_chain(*session, health_addr, zcord_entry ? zcord_entry->offsets : std::vector<gtlibcpp::Address>{0x30});
+    }
 
     if (!resolved_health || !resolved_ammo || !resolved_zcord) {
         std::cerr << "[-] Failed resolving pointer chain coordinates\n";

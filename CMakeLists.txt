@@ -31,6 +31,7 @@ add_library(gtlibcpp_core STATIC
     src/agent.cpp
     src/freeze.cpp
     src/inproc_transport.cpp
+    src/darwin_backend.cpp
 )
 target_include_directories(gtlibcpp_core
     PUBLIC
@@ -72,6 +73,12 @@ target_link_libraries(gt_trainer_cli PRIVATE gtlibcpp::core)
 target_compile_definitions(gt_trainer_cli PRIVATE GTLIBCPP_VERSION="${PROJECT_VERSION}")
 if(WIN32)
     target_link_libraries(gt_trainer_cli PRIVATE gtlibcpp::win32)
+endif()
+if(APPLE)
+    add_custom_command(TARGET gt_trainer_cli POST_BUILD
+        COMMAND codesign -s - --entitlements ${CMAKE_CURRENT_SOURCE_DIR}/cmake/entitlements.plist -f $<TARGET_FILE:gt_trainer_cli>
+        COMMENT "Codesigning gt_trainer_cli with get-task-allow entitlement"
+    )
 endif()
 install(TARGETS gt_trainer_cli RUNTIME DESTINATION bin)
 if(GTLIBCPP_BUILD_TESTS)
