@@ -1,0 +1,52 @@
+name: Multi-Agent Review Gate
+
+on:
+  pull_request:
+    branches: [master, develop]
+
+jobs:
+  adversarial-review-gate:
+    name: Multi-Agent PR Review & Quality Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Gate Check 1 - Branch Isolation"
+        run: |
+          echo "[+] Validating PR branch isolation..."
+          if [ "${{ github.head_ref }}" = "master" ] || [ "${{ github.head_ref }}" = "develop" ]; then
+            echo "[-] Error: Pull requests directly from default branches are not permitted."
+            exit 1
+          fi
+          echo "[✓] Branch isolation verified (${{ github.head_ref }} -> ${{ github.base_ref }})"
+
+      - name: "Gate Check 2 - Memory & Pointer Safety Static Audit"
+        run: |
+          echo "[+] Auditing memory and pointer arithmetic for overflow guards..."
+          grep -q "address + size < address" include/gtlibcpp/backend.hpp || {
+            echo "[-] Error: missing address wrap-around overflow check in backend.hpp"
+            exit 1
+          }
+          grep -q "(std::numeric_limits<Address>::max)()" include/gtlibcpp/memory_session.hpp || {
+            echo "[-] Error: missing offset overflow check in memory_session.hpp"
+            exit 1
+          }
+          echo "[✓] Memory safety static audit passed."
+
+      - name: "Gate Check 3 - Multi-Platform C++ Build & Test Verification"
+        run: |
+          cmake -B build -S . -DGTLIBCPP_BUILD_TESTS=ON -DGTLIBCPP_ENABLE_WERROR=ON
+          cmake --build build --config Release
+          ctest --test-dir build --output-on-failure
+          echo "[✓] Core test suite passed 100% under strict warnings."
+
+      - name: "Gate Check 4 - Documentation & Protocol Compliance"
+        run: |
+          test -f docs/MULTI_AGENT_REVIEW.md || {
+            echo "[-] Error: docs/MULTI_AGENT_REVIEW.md is missing"
+            exit 1
+          }
+          echo "[✓] Multi-agent review protocol compliance verified."

@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -54,7 +55,7 @@ struct Registrar {
     }
 };
 
-inline int require_failed(const char* expr, const char* file, int line) {
+[[noreturn]] inline int require_failed(const char* expr, const char* file, int line) {
     std::printf("    assertion failed: %s (%s:%d)\n", expr, file, line);
     throw std::runtime_error(std::string("assertion failed: ") + expr);
 }
