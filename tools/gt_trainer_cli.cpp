@@ -151,31 +151,58 @@ std::string format_hotkey(const std::vector<int>& keys) {
 // Simulated backend representing an offline game state (e.g. AssaultCube LocalPlayer layout)
 class SimulatedGameBackend final : public gtlibcpp::IMemoryBackend {
 public:
-    SimulatedGameBackend() {
-        // Setup AssaultCube LocalPlayer pointer at base + 0x17E0A8 -> 0x00500000
-        const gtlibcpp::Address base = 0x400000;
-        const gtlibcpp::Address local_entity_ptr = base + 0x17E0A8;
-        const gtlibcpp::Address local_player = 0x500000;
-        put_u32(local_entity_ptr, static_cast<std::uint32_t>(local_player));
+    explicit SimulatedGameBackend(bool is_64bit = true) : is_64bit_(is_64bit) {
+        // --- Setup 32-bit Windows AssaultCube LocalPlayer layout ---
+        // Base: 0x400000, LocalPlayer ptr: 0x400000 + 0x17E0A8 -> 0x500000
+        const gtlibcpp::Address win_base = 0x400000;
+        const gtlibcpp::Address win_player_ptr = win_base + 0x17E0A8;
+        const gtlibcpp::Address win_player = 0x500000;
+        put_u32(win_player_ptr, static_cast<std::uint32_t>(win_player));
 
         // Health at offset 0xEC -> default 100
-        put_u32(local_player + 0xEC, 100);
-
+        put_u32(win_player + 0xEC, 100);
         // Rifle Ammo at offset 0x140 -> default 20
-        put_u32(local_player + 0x140, 20);
+        put_u32(win_player + 0x140, 20);
+        // ZCord at offset 0x30 -> default 4.5f
+        put_float(win_player + 0x30, 4.5f);
+        // Multi-level Weapon Ammo
+        const gtlibcpp::Address win_weapon = 0x600000;
+        const gtlibcpp::Address win_clip = 0x700000;
+        put_u32(win_player + 0x368, static_cast<std::uint32_t>(win_weapon));
+        put_u32(win_weapon + 0x14, static_cast<std::uint32_t>(win_clip));
+        put_u32(win_clip + 0x0, 30);
 
-        // ZCord (jump/height coordinate) at offset 0x30 -> default 4.5f
-        put_float(local_player + 0x30, 4.5f);
+        // --- Setup 64-bit macOS AssaultCube LocalPlayer layout ---
+        // Base: 0x100000000, LocalPlayer ptr: 0x100000000 + 0x1CBD38 -> 0x100500000
+        const gtlibcpp::Address mac_base = 0x100000000ULL;
+        const gtlibcpp::Address mac_player_ptr = mac_base + 0x1CBD38ULL;
+        const gtlibcpp::Address mac_player = 0x100500000ULL;
+        put_u64(mac_player_ptr, static_cast<std::uint64_t>(mac_player));
 
-        // Weapon Ammo multi-level pointer:
-        // offset 0x368 -> weapon pointer 0x600000
-        // offset 0x14  -> clip pointer 0x700000
-        // offset 0x0   -> ammo count
-        const gtlibcpp::Address weapon_ptr = 0x600000;
-        const gtlibcpp::Address clip_ptr = 0x700000;
-        put_u32(local_player + 0x368, static_cast<std::uint32_t>(weapon_ptr));
-        put_u32(weapon_ptr + 0x14, static_cast<std::uint32_t>(clip_ptr));
-        put_u32(clip_ptr + 0x0, 30);
+        // Health at offset 0x100 -> default 100
+        put_u32(mac_player + 0x100, 100);
+        // Armor at offset 0x104 -> default 50
+        put_u32(mac_player + 0x104, 50);
+        // Assault Rifle Clip Ammo at offset 0x154 -> default 20
+        put_u32(mac_player + 0x154, 20);
+        // Assault Rifle Reserve Ammo at offset 0x130 -> default 60
+        put_u32(mac_player + 0x130, 60);
+        // Pistol Clip Ammo at offset 0x140 -> default 10
+        put_u32(mac_player + 0x140, 10);
+        // Subgun Clip Ammo at offset 0x14C -> default 30
+        put_u32(mac_player + 0x14C, 30);
+        // Sniper Clip Ammo at offset 0x150 -> default 5
+        put_u32(mac_player + 0x150, 5);
+        // Grenades at offset 0x158 -> default 1
+        put_u32(mac_player + 0x158, 1);
+        // ZCord (Height/Jump) at offset 0x10 -> default 4.5f
+        put_float(mac_player + 0x10, 4.5f);
+        // Position coordinates: XCord at offset 0x8, YCord at offset 0xC
+        put_float(mac_player + 0x8, 10.0f);
+        put_float(mac_player + 0xC, 20.0f);
+        // Orientation
+        put_float(mac_player + 0x38, 90.0f); // Yaw
+        put_float(mac_player + 0x3C, 0.0f);  // Pitch
     }
 
     gtlibcpp::Result<std::vector<std::uint8_t>>
@@ -210,21 +237,30 @@ public:
 
     [[nodiscard]] bool is_alive() noexcept override { return true; }
 
-    [[nodiscard]] std::string target_id() const override { return "simulated:ac_client:1337"; }
+    [[nodiscard]] std::string target_id() const override {
+        return is_64bit_ ? "simulated:assaultcube:1337" : "simulated:ac_client:1337";
+    }
 
     [[nodiscard]] gtlibcpp::TargetIdentity identity() const override {
         gtlibcpp::TargetIdentity id{};
         id.pid = 1337;
-        id.image_path = "ac_client.exe";
-        id.architecture = gtlibcpp::Architecture::x86;
+        id.image_path = is_64bit_ ? "assaultcube" : "ac_client.exe";
+        id.architecture = is_64bit_ ? gtlibcpp::Architecture::x64 : gtlibcpp::Architecture::x86;
         return id;
     }
 
 private:
+    bool is_64bit_ = true;
     void put_u32(gtlibcpp::Address addr, std::uint32_t val) {
         std::uint8_t b[4];
         std::memcpy(b, &val, 4);
         for (std::size_t i = 0; i < 4; ++i) memory_[addr + i] = b[i];
+    }
+
+    void put_u64(gtlibcpp::Address addr, std::uint64_t val) {
+        std::uint8_t b[8];
+        std::memcpy(b, &val, 8);
+        for (std::size_t i = 0; i < 8; ++i) memory_[addr + i] = b[i];
     }
 
     void put_float(gtlibcpp::Address addr, float val) {
@@ -236,25 +272,38 @@ private:
     std::map<gtlibcpp::Address, std::uint8_t> memory_;
 };
 
-// Resolves a Cheat Table pointer chain: base address followed by a list of offsets
+// Resolves a Cheat Table pointer chain: base address followed by a list of offsets.
+// Automatically supports both 32-bit (uint32) and 64-bit (uint64) pointer sizes.
 gtlibcpp::Result<gtlibcpp::Address> resolve_pointer_chain(
     gtlibcpp::MemorySession& session,
     gtlibcpp::Address base_addr,
-    const std::vector<gtlibcpp::Address>& offsets) {
+    const std::vector<gtlibcpp::Address>& offsets,
+    bool force_64bit = false) {
     if (offsets.empty()) return gtlibcpp::Result<gtlibcpp::Address>::success(base_addr);
+
+    const bool is_64bit = force_64bit || (base_addr >= 0x100000000ULL) ||
+        (session.backend() && (session.backend()->identity().architecture == gtlibcpp::Architecture::x64));
 
     gtlibcpp::Address current = base_addr;
     for (std::size_t i = 0; i < offsets.size(); ++i) {
-        if (i == offsets.size() - 1) {
-            // Last offset is added to pointer to reach final scalar value
-            auto ptr_val = session.read<std::uint32_t>(current);
+        if (is_64bit) {
+            auto ptr_val = session.read<std::uint64_t>(current);
             if (!ptr_val) return gtlibcpp::Result<gtlibcpp::Address>::failure(ptr_val.error());
-            return gtlibcpp::Result<gtlibcpp::Address>::success(
-                static_cast<gtlibcpp::Address>(ptr_val.value()) + offsets[i]);
+            if (i == offsets.size() - 1) {
+                return gtlibcpp::Result<gtlibcpp::Address>::success(
+                    static_cast<gtlibcpp::Address>(ptr_val.value()) + offsets[i]);
+            } else {
+                current = static_cast<gtlibcpp::Address>(ptr_val.value()) + offsets[i];
+            }
         } else {
             auto ptr_val = session.read<std::uint32_t>(current);
             if (!ptr_val) return gtlibcpp::Result<gtlibcpp::Address>::failure(ptr_val.error());
-            current = static_cast<gtlibcpp::Address>(ptr_val.value()) + offsets[i];
+            if (i == offsets.size() - 1) {
+                return gtlibcpp::Result<gtlibcpp::Address>::success(
+                    static_cast<gtlibcpp::Address>(ptr_val.value()) + offsets[i]);
+            } else {
+                current = static_cast<gtlibcpp::Address>(ptr_val.value()) + offsets[i];
+            }
         }
     }
     return gtlibcpp::Result<gtlibcpp::Address>::success(current);
@@ -269,7 +318,11 @@ void print_banner() {
 void print_usage(const char* prog) {
     std::cout << "Usage: " << prog << " [OPTIONS]\n"
               << "Options:\n"
+#if defined(__APPLE__)
+              << "  --table <path>   Load Cheat Table file (default: demos/CheatTable/assaultcube_mac.ct)\n"
+#else
               << "  --table <path>   Load Cheat Table file (default: demos/CheatTable/assaultcube.ct)\n"
+#endif
               << "  --list           List parsed cheat entries and exit\n"
               << "  --test [path]    Run automated hotkey detection and memory verification test\n"
               << "  --version        Show version information\n"
@@ -282,7 +335,11 @@ int main(int argc, char* argv[]) {
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
+#if defined(__APPLE__)
+    std::string table_path = "demos/CheatTable/assaultcube_mac.ct";
+#else
     std::string table_path = "demos/CheatTable/assaultcube.ct";
+#endif
     bool list_mode = false;
     bool test_mode = false;
 
@@ -319,7 +376,11 @@ int main(int argc, char* argv[]) {
         // Fallback search paths
         std::vector<std::string> fallbacks = {
             "../" + table_path,
+            "CheatTable/assaultcube_mac.ct",
+            "demos/CheatTable/assaultcube_mac.ct",
+            "../demos/CheatTable/assaultcube_mac.ct",
             "CheatTable/assaultcube.ct",
+            "demos/CheatTable/assaultcube.ct",
             "../demos/CheatTable/assaultcube.ct"
         };
         for (const auto& alt : fallbacks) {
@@ -395,42 +456,74 @@ int main(int argc, char* argv[]) {
     }
 #endif
 
-    if (!backend) {
-        backend = std::make_shared<SimulatedGameBackend>();
-        std::cout << "[*] Operating on high-fidelity simulated AssaultCube memory space (offline sandbox)\n";
-    }
-
-    auto session = std::make_shared<gtlibcpp::MemorySession>(backend);
-    auto freeze = std::make_shared<gtlibcpp::FreezeManager>(session);
-
     // Identify target entries: Health, Weapon Ammo, ZCord
     const gtlibcpp::CheatEntry* health_entry = nullptr;
     const gtlibcpp::CheatEntry* ammo_entry = nullptr;
     const gtlibcpp::CheatEntry* zcord_entry = nullptr;
 
     for (const auto& e : table.entries) {
-        if (e.description == "Health") health_entry = &e;
-        else if (e.description == "Weapon Ammo" || e.description == "Riffle Ammo") {
+        if (e.description == "Health") {
+            health_entry = &e;
+        } else if (e.description == "Assault Rifle Clip Ammo" ||
+                   e.description == "Weapon Ammo" ||
+                   e.description == "Riffle Ammo") {
             if (!ammo_entry) ammo_entry = &e;
-        } else if (e.description == "ZCord") zcord_entry = &e;
+        } else if (e.description == "ZCord") {
+            zcord_entry = &e;
+        }
     }
 
+    const bool is_mac_target = (table_path.find("mac") != std::string::npos) ||
+        (health_entry && health_entry->section == "assaultcube");
+
+    if (!backend) {
+        backend = std::make_shared<SimulatedGameBackend>(is_mac_target);
+        std::cout << "[*] Operating on high-fidelity simulated AssaultCube memory space ("
+                  << (is_mac_target ? "macOS 64-bit" : "Windows 32-bit") << " offline sandbox)\n";
+    }
+
+    auto session = std::make_shared<gtlibcpp::MemorySession>(backend);
+    auto freeze = std::make_shared<gtlibcpp::FreezeManager>(session);
+
     // Resolve pointers
-    const gtlibcpp::Address base = 0x400000;
-    const gtlibcpp::Address health_addr = base + 0x17E0A8;
-    auto resolved_health = resolve_pointer_chain(*session, health_addr, health_entry ? health_entry->offsets : std::vector<gtlibcpp::Address>{0xEC});
-    auto resolved_ammo = resolve_pointer_chain(*session, health_addr, ammo_entry ? ammo_entry->offsets : std::vector<gtlibcpp::Address>{0x140});
-    auto resolved_zcord = resolve_pointer_chain(*session, health_addr, zcord_entry ? zcord_entry->offsets : std::vector<gtlibcpp::Address>{0x30});
+    const gtlibcpp::Address default_mod_base = is_mac_target ? 0x100000000ULL : 0x400000ULL;
+
+    auto compute_entry_base = [&](const gtlibcpp::CheatEntry* entry, gtlibcpp::Address fallback_off) -> gtlibcpp::Address {
+        if (!entry) return default_mod_base + fallback_off;
+        if (!entry->section.empty()) {
+            if (entry->section == "assaultcube") {
+                return 0x100000000ULL + entry->address;
+            } else if (entry->section == "ac_client.exe") {
+                return 0x400000ULL + entry->address;
+            }
+        }
+        if (entry->address >= 0x100000000ULL) {
+            return entry->address;
+        }
+        return default_mod_base + entry->address;
+    };
+
+    const gtlibcpp::Address health_base = compute_entry_base(health_entry, is_mac_target ? 0x1CBD38ULL : 0x17E0A8ULL);
+    const gtlibcpp::Address ammo_base = compute_entry_base(ammo_entry, is_mac_target ? 0x1CBD38ULL : 0x17E0A8ULL);
+    const gtlibcpp::Address zcord_base = compute_entry_base(zcord_entry, is_mac_target ? 0x1CBD38ULL : 0x17E0A8ULL);
+
+    const std::vector<gtlibcpp::Address> default_health_offsets = is_mac_target ? std::vector<gtlibcpp::Address>{0x100} : std::vector<gtlibcpp::Address>{0xEC};
+    const std::vector<gtlibcpp::Address> default_ammo_offsets = is_mac_target ? std::vector<gtlibcpp::Address>{0x154} : std::vector<gtlibcpp::Address>{0x140};
+    const std::vector<gtlibcpp::Address> default_zcord_offsets = is_mac_target ? std::vector<gtlibcpp::Address>{0x10} : std::vector<gtlibcpp::Address>{0x30};
+
+    auto resolved_health = resolve_pointer_chain(*session, health_base, health_entry && !health_entry->offsets.empty() ? health_entry->offsets : default_health_offsets, is_mac_target);
+    auto resolved_ammo = resolve_pointer_chain(*session, ammo_base, ammo_entry && !ammo_entry->offsets.empty() ? ammo_entry->offsets : default_ammo_offsets, is_mac_target);
+    auto resolved_zcord = resolve_pointer_chain(*session, zcord_base, zcord_entry && !zcord_entry->offsets.empty() ? zcord_entry->offsets : default_zcord_offsets, is_mac_target);
 
     if (!resolved_health || !resolved_ammo || !resolved_zcord) {
-        std::cout << "[!] Pointer resolution on target returned unmapped coordinates (table offsets may be Windows x86 specific).\n"
+        std::cout << "[!] Pointer resolution on live target returned unmapped coordinates (e.g. at main menu or different architecture).\n"
                   << "    Switching session to simulated game space to preserve trainer functionality.\n";
-        backend = std::make_shared<SimulatedGameBackend>();
+        backend = std::make_shared<SimulatedGameBackend>(is_mac_target);
         session = std::make_shared<gtlibcpp::MemorySession>(backend);
         freeze = std::make_shared<gtlibcpp::FreezeManager>(session);
-        resolved_health = resolve_pointer_chain(*session, health_addr, health_entry ? health_entry->offsets : std::vector<gtlibcpp::Address>{0xEC});
-        resolved_ammo = resolve_pointer_chain(*session, health_addr, ammo_entry ? ammo_entry->offsets : std::vector<gtlibcpp::Address>{0x140});
-        resolved_zcord = resolve_pointer_chain(*session, health_addr, zcord_entry ? zcord_entry->offsets : std::vector<gtlibcpp::Address>{0x30});
+        resolved_health = resolve_pointer_chain(*session, health_base, health_entry && !health_entry->offsets.empty() ? health_entry->offsets : default_health_offsets, is_mac_target);
+        resolved_ammo = resolve_pointer_chain(*session, ammo_base, ammo_entry && !ammo_entry->offsets.empty() ? ammo_entry->offsets : default_ammo_offsets, is_mac_target);
+        resolved_zcord = resolve_pointer_chain(*session, zcord_base, zcord_entry && !zcord_entry->offsets.empty() ? zcord_entry->offsets : default_zcord_offsets, is_mac_target);
     }
 
     if (!resolved_health || !resolved_ammo || !resolved_zcord) {

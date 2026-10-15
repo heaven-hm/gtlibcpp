@@ -530,10 +530,22 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
                 std::int64_t v = 0;
                 if (parse_int64(addr_node->text, v)) {
                     entry.address = static_cast<Address>(v);
-                } else if (!addr_node->text.empty() && addr_node->text.front() == '"') {
-                    table.diagnostics.push_back(
-                        "entry " + entry.id.value +
-                        " has a symbolic address expression: " + addr_node->text);
+                } else {
+                    const auto plus_pos = addr_node->text.find('+');
+                    if (plus_pos != std::string::npos) {
+                        const auto mod_name = addr_node->text.substr(0, plus_pos);
+                        const auto off_str = addr_node->text.substr(plus_pos + 1);
+                        if (parse_int64(off_str, v)) {
+                            entry.address = static_cast<Address>(v);
+                            if (entry.section.empty()) {
+                                entry.section = mod_name;
+                            }
+                        }
+                    } else if (!addr_node->text.empty() && addr_node->text.front() == '"') {
+                        table.diagnostics.push_back(
+                            "entry " + entry.id.value +
+                            " has a symbolic address expression: " + addr_node->text);
+                    }
                 }
             }
         }
