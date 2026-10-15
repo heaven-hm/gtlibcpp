@@ -457,9 +457,10 @@ DWORD GTLibc::GetProcessID4mHWND(HWND hwnd)
 
 bool GTLibc::HotKeysDown(const std::vector<int> &keys)
 {
-    short result;
+    if (keys.empty())
+        return false;
 
-    result = GetAsyncKeyState(keys[0]);
+    short result = GetAsyncKeyState(keys[0]);
     for (auto &key : keys)
         result &= GetAsyncKeyState(key);
 
@@ -692,13 +693,14 @@ void GTLibc::AddCheatTableEntry(const std::string &description, const std::strin
 
 void GTLibc::ActivateCheatTableEntries(const std::vector<int> &cheatEntryIds)
 {
+    // Cheat entry IDs are stable identifiers, not vector positions.
     g_CheatTable.cheatEntries.erase(
         std::remove_if(g_CheatTable.cheatEntries.begin(), g_CheatTable.cheatEntries.end(),
                        [&](const auto &entry)
                        {
-                           return std::none_of(cheatEntryIds.begin(), cheatEntryIds.end(),
-                                               [&](const auto &index)
-                                               { return g_CheatTable.cheatEntries[index] == entry; });
+                           return !entry || std::find(cheatEntryIds.begin(),
+                                                     cheatEntryIds.end(), entry->Id)
+                                                == cheatEntryIds.end();
                        }),
         g_CheatTable.cheatEntries.end());
 }
