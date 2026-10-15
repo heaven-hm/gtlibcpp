@@ -728,9 +728,12 @@ JsonValue AgentService::on_unfreeze(const JsonValue& params) {
     // Stopping another caller's freeze alters target state and must be approved.
     // The current RPC protocol has no independently authenticated operator,
     // so fail closed. Trusted host code may call FreezeManager::unfreeze.
+    const auto error = make_error(ErrorCode::policy_denied,
+                                  "unfreeze RPC disabled until scoped authorization is implemented",
+                                  "AgentService::on_unfreeze");
     return error_response(json_get_string(params, "request_id"),
-                          static_cast<std::int32_t>(ErrorCode::policy_denied),
-                          "unfreeze RPC disabled until scoped authorization is implemented");
+                          static_cast<std::int32_t>(error.code),
+                          error.message, &error);
 }
 
 JsonValue AgentService::on_status(const JsonValue& params) {
