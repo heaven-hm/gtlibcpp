@@ -161,9 +161,19 @@ public:
 
         // Health at offset 0xEC -> default 100
         put_u32(win_player + 0xEC, 100);
+        // Armor at offset 0xF0 -> default 50
+        put_u32(win_player + 0xF0, 50);
+        // GunSelect at offset 0xFC -> default 6 (Assault Rifle)
+        put_u32(win_player + 0xFC, 6);
+        // Reserve ammo array (ammo[9]) at 0x104
+        for (int i = 0; i < 9; ++i) put_u32(win_player + 0x104 + i * 4, 60);
+        // Clip ammo array (mag[9]) at 0x128 (Assault Rifle mag[6] is at 0x140)
+        for (int i = 0; i < 9; ++i) put_u32(win_player + 0x128 + i * 4, 20);
         // Rifle Ammo at offset 0x140 -> default 20
         put_u32(win_player + 0x140, 20);
-        // ZCord at offset 0x30 -> default 4.5f
+        // Position coordinates: XCord at offset 0x2C, YCord at offset 0x28, ZCord at offset 0x30
+        put_float(win_player + 0x2C, 10.0f);
+        put_float(win_player + 0x28, 20.0f);
         put_float(win_player + 0x30, 4.5f);
         // Multi-level Weapon Ammo
         const gtlibcpp::Address win_weapon = 0x600000;
@@ -183,23 +193,25 @@ public:
         put_u32(mac_player + 0x100, 100);
         // Armor at offset 0x104 -> default 50
         put_u32(mac_player + 0x104, 50);
-        // Assault Rifle Clip Ammo at offset 0x154 -> default 20
-        put_u32(mac_player + 0x154, 20);
-        // Assault Rifle Reserve Ammo at offset 0x130 -> default 60
-        put_u32(mac_player + 0x130, 60);
-        // Pistol Clip Ammo at offset 0x140 -> default 10
-        put_u32(mac_player + 0x140, 10);
-        // Subgun Clip Ammo at offset 0x14C -> default 30
-        put_u32(mac_player + 0x14C, 30);
-        // Sniper Clip Ammo at offset 0x150 -> default 5
-        put_u32(mac_player + 0x150, 5);
-        // Grenades at offset 0x158 -> default 1
-        put_u32(mac_player + 0x158, 1);
-        // ZCord (Height/Jump) at offset 0x10 -> default 4.5f
-        put_float(mac_player + 0x10, 4.5f);
-        // Position coordinates: XCord at offset 0x8, YCord at offset 0xC
+        // GunSelect at offset 0x108 -> default 6 (Assault Rifle)
+        put_u32(mac_player + 0x108, 6);
+        // Reserve ammo array (ammo[9]) at 0x118:
+        for (int i = 0; i < 9; ++i) put_u32(mac_player + 0x118 + i * 4, 60);
+        put_u32(mac_player + 0x118 + 1 * 4, 50); // Pistol reserve
+        // Clip ammo array (mag[9]) at 0x13c:
+        put_u32(mac_player + 0x13c + 0 * 4, 1);  // Knife
+        put_u32(mac_player + 0x13c + 1 * 4, 10); // Pistol (0x140)
+        put_u32(mac_player + 0x13c + 2 * 4, 30); // Carbine
+        put_u32(mac_player + 0x13c + 3 * 4, 8);  // Shotgun
+        put_u32(mac_player + 0x13c + 4 * 4, 30); // Subgun (0x14C)
+        put_u32(mac_player + 0x13c + 5 * 4, 5);  // Sniper (0x150)
+        put_u32(mac_player + 0x13c + 6 * 4, 20); // Assault (0x154)
+        put_u32(mac_player + 0x13c + 7 * 4, 1);  // Grenades (0x158)
+        put_u32(mac_player + 0x13c + 8 * 4, 20); // Akimbo
+        // Position coordinates: XCord at offset 0x8, YCord at offset 0xC, ZCord at offset 0x10
         put_float(mac_player + 0x8, 10.0f);
         put_float(mac_player + 0xC, 20.0f);
+        put_float(mac_player + 0x10, 4.5f);
         // Orientation
         put_float(mac_player + 0x38, 90.0f); // Yaw
         put_float(mac_player + 0x3C, 0.0f);  // Pitch
@@ -307,6 +319,86 @@ gtlibcpp::Result<gtlibcpp::Address> resolve_pointer_chain(
         }
     }
     return gtlibcpp::Result<gtlibcpp::Address>::success(current);
+}
+
+static const char* const kGunNames[9] = {
+    "Knife",
+    "Pistol",
+    "Carbine",
+    "Shotgun",
+    "Subgun",
+    "Sniper Rifle",
+    "Assault Rifle",
+    "Grenade",
+    "Akimbo"
+};
+
+struct PlayerState {
+    std::uint32_t health = 0;
+    std::uint32_t armor = 0;
+    std::int32_t  gun_id = -1;
+    std::string   weapon_name = "Weapon";
+    std::uint32_t clip_ammo = 0;
+    std::uint32_t reserve_ammo = 0;
+    float         pos_x = 0.0f;
+    float         pos_y = 0.0f;
+    float         pos_z = 0.0f;
+    bool          valid = false;
+};
+
+PlayerState get_player_state(
+    gtlibcpp::MemorySession& session,
+    gtlibcpp::Address player_base,
+    gtlibcpp::Address fallback_health,
+    gtlibcpp::Address fallback_ammo,
+    gtlibcpp::Address fallback_zcord,
+    bool is_mac) {
+    PlayerState s{};
+    if (player_base != 0) {
+        const gtlibcpp::Address hp_addr = player_base + (is_mac ? 0x100 : 0xEC);
+        const gtlibcpp::Address arm_addr = player_base + (is_mac ? 0x104 : 0xF0);
+        const gtlibcpp::Address gun_addr = player_base + (is_mac ? 0x108 : 0xFC);
+        const gtlibcpp::Address x_addr = player_base + (is_mac ? 0x8 : 0x2C);
+        const gtlibcpp::Address y_addr = player_base + (is_mac ? 0xC : 0x28);
+        const gtlibcpp::Address z_addr = player_base + (is_mac ? 0x10 : 0x30);
+
+        auto hp = session.read<std::uint32_t>(hp_addr);
+        auto arm = session.read<std::uint32_t>(arm_addr);
+        auto gun = session.read<std::int32_t>(gun_addr);
+        auto px = session.read<float>(x_addr);
+        auto py = session.read<float>(y_addr);
+        auto pz = session.read<float>(z_addr);
+
+        if (hp) s.health = hp.value();
+        if (arm) s.armor = arm.value();
+        if (px) s.pos_x = px.value();
+        if (py) s.pos_y = py.value();
+        if (pz) s.pos_z = pz.value();
+
+        if (gun && gun.value() >= 0 && gun.value() < 9) {
+            s.gun_id = gun.value();
+            s.weapon_name = kGunNames[s.gun_id];
+            const gtlibcpp::Address clip_addr = player_base + (is_mac ? (0x13C + s.gun_id * 4) : (0x128 + s.gun_id * 4));
+            const gtlibcpp::Address res_addr  = player_base + (is_mac ? (0x118 + s.gun_id * 4) : (0x104 + s.gun_id * 4));
+            auto clip = session.read<std::uint32_t>(clip_addr);
+            auto res = session.read<std::uint32_t>(res_addr);
+            if (clip) s.clip_ammo = clip.value();
+            if (res) s.reserve_ammo = res.value();
+        } else {
+            auto a = session.read<std::uint32_t>(fallback_ammo);
+            if (a) s.clip_ammo = a.value();
+        }
+        s.valid = hp.ok();
+    } else {
+        auto hp = session.read<std::uint32_t>(fallback_health);
+        auto a = session.read<std::uint32_t>(fallback_ammo);
+        auto z = session.read<float>(fallback_zcord);
+        if (hp) s.health = hp.value();
+        if (a) s.clip_ammo = a.value();
+        if (z) s.pos_z = z.value();
+        s.valid = hp.ok();
+    }
+    return s;
 }
 
 void print_banner() {
@@ -419,14 +511,17 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    // 2. Identify target entries: Health, Weapon Ammo, ZCord
+    // 2. Identify target entries: Health, Armor, Weapon Ammo, ZCord
     const gtlibcpp::CheatEntry* health_entry = nullptr;
+    const gtlibcpp::CheatEntry* armor_entry = nullptr;
     const gtlibcpp::CheatEntry* ammo_entry = nullptr;
     const gtlibcpp::CheatEntry* zcord_entry = nullptr;
 
     for (const auto& e : table.entries) {
         if (e.description == "Health") {
             health_entry = &e;
+        } else if (e.description == "Armor") {
+            armor_entry = &e;
         } else if (e.description == "Assault Rifle Clip Ammo" ||
                    e.description == "Weapon Ammo" ||
                    e.description == "Riffle Ammo") {
@@ -513,16 +608,28 @@ int main(int argc, char* argv[]) {
     };
 
     const gtlibcpp::Address health_base = compute_entry_base(health_entry, is_mac_target ? 0x1CBD38ULL : 0x17E0A8ULL);
+    const gtlibcpp::Address armor_base = compute_entry_base(armor_entry, is_mac_target ? 0x1CBD38ULL : 0x17E0A8ULL);
     const gtlibcpp::Address ammo_base = compute_entry_base(ammo_entry, is_mac_target ? 0x1CBD38ULL : 0x17E0A8ULL);
     const gtlibcpp::Address zcord_base = compute_entry_base(zcord_entry, is_mac_target ? 0x1CBD38ULL : 0x17E0A8ULL);
 
     const std::vector<gtlibcpp::Address> default_health_offsets = is_mac_target ? std::vector<gtlibcpp::Address>{0x100} : std::vector<gtlibcpp::Address>{0xEC};
+    const std::vector<gtlibcpp::Address> default_armor_offsets = is_mac_target ? std::vector<gtlibcpp::Address>{0x104} : std::vector<gtlibcpp::Address>{0xF0};
     const std::vector<gtlibcpp::Address> default_ammo_offsets = is_mac_target ? std::vector<gtlibcpp::Address>{0x154} : std::vector<gtlibcpp::Address>{0x140};
     const std::vector<gtlibcpp::Address> default_zcord_offsets = is_mac_target ? std::vector<gtlibcpp::Address>{0x10} : std::vector<gtlibcpp::Address>{0x30};
 
     auto resolved_health = resolve_pointer_chain(*session, health_base, health_entry && !health_entry->offsets.empty() ? health_entry->offsets : default_health_offsets, is_mac_target);
+    auto resolved_armor = resolve_pointer_chain(*session, armor_base, armor_entry && !armor_entry->offsets.empty() ? armor_entry->offsets : default_armor_offsets, is_mac_target);
     auto resolved_ammo = resolve_pointer_chain(*session, ammo_base, ammo_entry && !ammo_entry->offsets.empty() ? ammo_entry->offsets : default_ammo_offsets, is_mac_target);
     auto resolved_zcord = resolve_pointer_chain(*session, zcord_base, zcord_entry && !zcord_entry->offsets.empty() ? zcord_entry->offsets : default_zcord_offsets, is_mac_target);
+
+    gtlibcpp::Address player_base = 0;
+    if (is_mac_target) {
+        auto p1 = session->read<std::uint64_t>(health_base);
+        if (p1 && p1.value() != 0) player_base = p1.value();
+    } else {
+        auto p1 = session->read<std::uint32_t>(health_base);
+        if (p1 && p1.value() != 0) player_base = p1.value();
+    }
 
     bool resolution_valid = false;
     if (resolved_health && resolved_ammo && resolved_zcord) {
@@ -542,11 +649,21 @@ int main(int argc, char* argv[]) {
         freeze = std::make_shared<gtlibcpp::FreezeManager>(session);
         const gtlibcpp::Address sim_base = is_mac_target ? 0x100000000ULL : 0x400000ULL;
         const gtlibcpp::Address sim_health_base = is_mac_target ? (sim_base + (health_entry ? health_entry->address : 0x1CBD38ULL)) : (sim_base + (health_entry ? health_entry->address : 0x17E0A8ULL));
+        const gtlibcpp::Address sim_armor_base = is_mac_target ? (sim_base + (armor_entry ? armor_entry->address : 0x1CBD38ULL)) : (sim_base + (armor_entry ? armor_entry->address : 0x17E0A8ULL));
         const gtlibcpp::Address sim_ammo_base = is_mac_target ? (sim_base + (ammo_entry ? ammo_entry->address : 0x1CBD38ULL)) : (sim_base + (ammo_entry ? ammo_entry->address : 0x17E0A8ULL));
         const gtlibcpp::Address sim_zcord_base = is_mac_target ? (sim_base + (zcord_entry ? zcord_entry->address : 0x1CBD38ULL)) : (sim_base + (zcord_entry ? zcord_entry->address : 0x17E0A8ULL));
         resolved_health = resolve_pointer_chain(*session, sim_health_base, health_entry && !health_entry->offsets.empty() ? health_entry->offsets : default_health_offsets, is_mac_target);
+        resolved_armor = resolve_pointer_chain(*session, sim_armor_base, armor_entry && !armor_entry->offsets.empty() ? armor_entry->offsets : default_armor_offsets, is_mac_target);
         resolved_ammo = resolve_pointer_chain(*session, sim_ammo_base, ammo_entry && !ammo_entry->offsets.empty() ? ammo_entry->offsets : default_ammo_offsets, is_mac_target);
         resolved_zcord = resolve_pointer_chain(*session, sim_zcord_base, zcord_entry && !zcord_entry->offsets.empty() ? zcord_entry->offsets : default_zcord_offsets, is_mac_target);
+
+        if (is_mac_target) {
+            auto p1 = session->read<std::uint64_t>(sim_health_base);
+            if (p1 && p1.value() != 0) player_base = p1.value();
+        } else {
+            auto p1 = session->read<std::uint32_t>(sim_health_base);
+            if (p1 && p1.value() != 0) player_base = p1.value();
+        }
     }
 
     if (!resolved_health || !resolved_ammo || !resolved_zcord) {
@@ -554,38 +671,63 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    if (!resolved_armor && player_base != 0) {
+        resolved_armor = gtlibcpp::Result<gtlibcpp::Address>::success(player_base + (is_mac_target ? 0x104 : 0xF0));
+    }
+
     std::cout << "[+] Resolved Target Addresses:\n"
+              << "    Player Base    : 0x" << std::hex << player_base << std::dec << "\n"
               << "    Health Address : 0x" << std::hex << resolved_health.value() << std::dec << "\n"
+              << "    Armor Address  : 0x" << std::hex << (resolved_armor ? resolved_armor.value() : 0) << std::dec << "\n"
               << "    Ammo Address   : 0x" << std::hex << resolved_ammo.value() << std::dec << "\n"
               << "    ZCord Address  : 0x" << std::hex << resolved_zcord.value() << std::dec << "\n\n";
 
     // Hotkey Action Dispatcher
     auto trigger_health = [&]() {
-        auto r = session->write<std::uint32_t>(resolved_health.value(), 100);
-        if (r) {
-            std::cout << " [HOTKEY TRIGGERED] -> Health set to 100 [OK]\n";
+        bool ok = false;
+        if (session->write<std::uint32_t>(resolved_health.value(), 100)) ok = true;
+        if (resolved_armor) {
+            (void)session->write<std::uint32_t>(resolved_armor.value(), 100);
+        } else if (player_base != 0) {
+            (void)session->write<std::uint32_t>(player_base + (is_mac_target ? 0x104 : 0xF0), 100);
+        }
+        if (ok) {
+            std::cout << " [HOTKEY TRIGGERED] -> Health & Armor restored to 100 HP / 100 AP [OK]\n";
         } else {
-            std::cout << " [ERROR] Health write failed: " << r.error().message << "\n";
+            std::cout << " [ERROR] Health write failed: " << session->write<std::uint32_t>(resolved_health.value(), 100).error().message << "\n";
         }
     };
 
     bool ammo_frozen = false;
+    auto refill_all_weapons = [&](std::uint32_t amount = 999) {
+        if (player_base != 0) {
+            for (int i = 0; i < 9; ++i) {
+                const gtlibcpp::Address clip_addr = player_base + (is_mac_target ? (0x13C + i * 4) : (0x128 + i * 4));
+                const gtlibcpp::Address res_addr  = player_base + (is_mac_target ? (0x118 + i * 4) : (0x104 + i * 4));
+                (void)session->write<std::uint32_t>(clip_addr, amount);
+                (void)session->write<std::uint32_t>(res_addr, amount);
+            }
+        }
+        (void)session->write<std::uint32_t>(resolved_ammo.value(), amount);
+    };
+
     auto trigger_ammo = [&]() {
         if (!ammo_frozen) {
             gtlibcpp::FreezeRequest req{};
-            req.id = "ammo_freeze";
+            req.id = "ammo_freeze_primary";
             req.address = resolved_ammo.value();
             req.type_name = "uint32";
             req.value_u64 = 999;
             req.interval = std::chrono::milliseconds(20);
             req.size = 4;
             auto f_res = freeze->freeze(req);
+            refill_all_weapons(999);
             if (f_res) {
                 ammo_frozen = true;
-                std::cout << " [HOTKEY TRIGGERED] -> Unlimited Ammo ACTIVATED (Frozen at 999) [OK]\n";
+                std::cout << " [HOTKEY TRIGGERED] -> Unlimited Ammo ACTIVATED (Frozen at 999 for all weapons) [OK]\n";
             }
         } else {
-            (void)freeze->unfreeze("ammo_freeze");
+            (void)freeze->unfreeze("ammo_freeze_primary");
             ammo_frozen = false;
             std::cout << " [HOTKEY TRIGGERED] -> Unlimited Ammo DEACTIVATED [OK]\n";
         }
@@ -598,20 +740,19 @@ int main(int argc, char* argv[]) {
             auto w = session->write<float>(resolved_zcord.value(), new_val);
             if (w) {
                 std::cout << " [HOTKEY TRIGGERED] -> High Jump / ZCord increased: "
-                          << cur.value() << " -> " << new_val << " (+10.0) [OK]\n";
+                          << std::fixed << std::setprecision(2) << cur.value() << " -> " << new_val << " (+10.0) [OK]\n";
             }
         }
     };
 
     auto print_status = [&]() {
-        auto h = session->read<std::uint32_t>(resolved_health.value());
-        auto a = session->read<std::uint32_t>(resolved_ammo.value());
-        auto z = session->read<float>(resolved_zcord.value());
+        auto s = get_player_state(*session, player_base, resolved_health.value(), resolved_ammo.value(), resolved_zcord.value(), is_mac_target);
         std::cout << "\n--- Current Memory State ---\n"
-                  << "  Health : " << (h ? std::to_string(h.value()) : "ERR") << "\n"
-                  << "  Ammo   : " << (a ? std::to_string(a.value()) : "ERR")
+                  << "  Health   : " << s.health << " HP\n"
+                  << "  Armor    : " << s.armor << " AP\n"
+                  << "  Weapon   : " << s.weapon_name << " [Clip: " << s.clip_ammo << " | Reserve: " << s.reserve_ammo << "]"
                   << (ammo_frozen ? " [FROZEN: UNLIMITED]" : " [NORMAL]") << "\n"
-                  << "  ZCord  : " << (z ? std::to_string(z.value()) : "ERR") << "\n"
+                  << "  Position : (" << std::fixed << std::setprecision(2) << s.pos_x << ", " << s.pos_y << ", " << s.pos_z << ")\n"
                   << "----------------------------\n\n";
     };
 
@@ -620,7 +761,10 @@ int main(int argc, char* argv[]) {
         std::cout << "[*] Running automated hotkey detection & memory verification test...\n";
         print_status();
 
-        std::cout << "[Test 1/3] Simulating Hotkey Ctrl+H (Set Health 100)...\n";
+        // 1. Snapshot original values to guarantee non-destructive test execution
+        const auto orig_state = get_player_state(*session, player_base, resolved_health.value(), resolved_ammo.value(), resolved_zcord.value(), is_mac_target);
+
+        std::cout << "[Test 1/3] Simulating Hotkey Ctrl+H (Set Health & Armor 100)...\n";
         (void)session->write<std::uint32_t>(resolved_health.value(), 35); // simulate damage
         trigger_health();
         auto h_verify = session->read<std::uint32_t>(resolved_health.value());
@@ -648,8 +792,27 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
+        // 2. Non-destructive restore: cleanly restore original values so live game is not left in mutated state
+        if (orig_state.valid) {
+            (void)session->write<std::uint32_t>(resolved_health.value(), orig_state.health);
+            if (resolved_armor) {
+                (void)session->write<std::uint32_t>(resolved_armor.value(), orig_state.armor);
+            } else if (player_base != 0) {
+                (void)session->write<std::uint32_t>(player_base + (is_mac_target ? 0x104 : 0xF0), orig_state.armor);
+            }
+            (void)session->write<std::uint32_t>(resolved_ammo.value(), orig_state.clip_ammo);
+            (void)session->write<float>(resolved_zcord.value(), orig_state.pos_z);
+            if (player_base != 0 && orig_state.gun_id >= 0 && orig_state.gun_id < 9) {
+                const gtlibcpp::Address clip_addr = player_base + (is_mac_target ? (0x13C + orig_state.gun_id * 4) : (0x128 + orig_state.gun_id * 4));
+                const gtlibcpp::Address res_addr  = player_base + (is_mac_target ? (0x118 + orig_state.gun_id * 4) : (0x104 + orig_state.gun_id * 4));
+                (void)session->write<std::uint32_t>(clip_addr, orig_state.clip_ammo);
+                (void)session->write<std::uint32_t>(res_addr, orig_state.reserve_ammo);
+            }
+        }
+
         print_status();
         std::cout << "[+] All 3/3 Hotkey detection and trainer memory operations PASSED!\n";
+        std::cout << "[+] Target memory state restored non-destructively to pre-test values.\n";
         return 0;
     }
 
@@ -665,7 +828,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<HotkeyBinding> bindings;
     bindings.push_back({
-        "Health (100 HP)",
+        "Health & Armor (100 HP / 100 AP)",
         health_entry ? health_entry->hotkeys : std::vector<int>{17, 72},
         'h',
         8, // Ctrl+H
@@ -673,7 +836,7 @@ int main(int argc, char* argv[]) {
         false
     });
     bindings.push_back({
-        "Unlimited Ammo (Freeze 999)",
+        "Unlimited Ammo (All Weapons 999)",
         ammo_entry ? ammo_entry->hotkeys : std::vector<int>{17, 65},
         'a',
         1, // Ctrl+A
@@ -690,9 +853,9 @@ int main(int argc, char* argv[]) {
     });
 
     std::cout << "[*] Trainer active loop running! Listening for hotkeys (Press 'q' or Ctrl+C to quit)...\n";
-    std::cout << "    Controls: [H] Health (100 HP) | [A] Unlimited Ammo | [Z] High Jump (+10) | [S] Status | [Q] Quit\n";
+    std::cout << "    Controls: [H] Health & Armor (100) | [A] Unlimited Ammo | [Z] High Jump (+10) | [S] Status | [Q] Quit\n";
 #if defined(_WIN32)
-    std::cout << "    Global In-Game Hotkeys Active: Ctrl+H (Health), Ctrl+A (Ammo), Ctrl+Z (Jump)\n\n";
+    std::cout << "    Global In-Game Hotkeys Active: Ctrl+H (Health & Armor), Ctrl+A (Ammo), Ctrl+Z (Jump)\n\n";
 #else
     std::cout << "    Terminal Hotkeys Active: Hit [H], [A], [Z], or [S] at any time (no Enter required)\n\n";
 #endif
@@ -776,16 +939,17 @@ int main(int argc, char* argv[]) {
             auto now = std::chrono::steady_clock::now();
             if (now - last_status >= std::chrono::seconds(1)) {
                 last_status = now;
-                auto h = session->read<std::uint32_t>(resolved_health.value());
-                auto a = session->read<std::uint32_t>(resolved_ammo.value());
-                auto z = session->read<float>(resolved_zcord.value());
+                auto s = get_player_state(*session, player_base, resolved_health.value(), resolved_ammo.value(), resolved_zcord.value(), is_mac_target);
+                if (ammo_frozen && player_base != 0 && s.gun_id >= 0 && s.gun_id < 9) {
+                    const gtlibcpp::Address active_clip = player_base + (is_mac_target ? (0x13C + s.gun_id * 4) : (0x128 + s.gun_id * 4));
+                    (void)session->write<std::uint32_t>(active_clip, 999);
+                }
                 if (stdout_tty) {
-                    std::cout << "[Loop Active] Health: "
-                              << (h ? std::to_string(h.value()) : "ERR")
-                              << " | Ammo: " << (a ? std::to_string(a.value()) : "ERR")
-                              << (ammo_frozen ? " [FROZEN: UNLIMITED]" : " [NORMAL]")
-                              << " | ZCord: " << std::fixed << std::setprecision(2) << (z ? z.value() : 0.0f)
-                              << " | (Press [H], [A], [Z], or [Q] to quit)\r" << std::flush;
+                    std::cout << "[Loop Active] HP: " << s.health << " | Armor: " << s.armor
+                              << " | " << s.weapon_name << ": " << s.clip_ammo << "/" << s.reserve_ammo
+                              << (ammo_frozen ? " [UNLIMITED]" : " [NORMAL]")
+                              << " | Pos: (" << std::fixed << std::setprecision(1) << s.pos_x << ", " << s.pos_y << ", " << s.pos_z << ")"
+                              << " | ([H], [A], [Z], [Q] to quit)\r" << std::flush;
                 }
             }
         }
