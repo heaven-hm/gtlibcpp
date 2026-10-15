@@ -5,6 +5,8 @@ for full implementation, see GTLibc.cpp
 
 #pragma once
 #include "GTLibc.hpp"
+#include <limits>
+#include <cstdint>
 using namespace GTLIBC;
 
 /*
@@ -98,42 +100,55 @@ T GTLibc::ReadAddressOffset(DWORD address, DWORD offset)
 /*
  * @brief Read address with offsets
  * @param address - Address to read
- * @param offsets - Offsets to add to address
+ * @param offsets - Base is a pointer slot; intermediate offsets dereference pointers.
+ *                   The final offset addresses the typed value.
  * @return T - Value read from address
  *
  */
 template <typename T>
 T GTLibc::ReadAddressOffsets(DWORD address, const std::vector<DWORD> &offsets)
 {
-    AddLog("ReadAddressOffsets", "Trying to read address with offsets: " + to_hex_string(address));
-
-    std::ostringstream oss;
-    for (auto d : offsets)
-        oss << to_hex_string(d) << ",";
-
-    std::string result = oss.str();
-    result.pop_back();
-    AddLog("ReadPointerOffsets", "Offsets: " + result);
+    AddLog("ReadAddressOffsets", "Resolving offsets from: " + to_hex_string(address));
+    if (offsets.empty())
+        return ReadAddress<T>(address);
 
     try
     {
-        DWORD currentAddress = address;
-        for (DWORD offset : offsets)
+        DWORD currentAddress = 0;
+        SIZE_T initialBytesRead = 0;
+        if (!gameHandle || !ReadProcessMemory(gameHandle,
+                reinterpret_cast<LPCVOID>(static_cast<std::uintptr_t>(address)),
+                &currentAddress, sizeof(currentAddress), &initialBytesRead)
+                || initialBytesRead != sizeof(currentAddress))
+            throw std::runtime_error("base pointer read failed");
+        if (currentAddress == 0)
+            throw std::runtime_error("null base pointer in chain");
+        for (std::size_t i = 0; i + 1 < offsets.size(); ++i)
         {
-            currentAddress = ReadAddress<DWORD>(currentAddress + offset);
+            const DWORD offset = offsets[i];
+            if (offset > (std::numeric_limits<DWORD>::max)() - currentAddress)
+                throw std::overflow_error("pointer offset address overflow");
+            const DWORD pointerAddress = currentAddress + offset;
+            DWORD next = 0;
+            SIZE_T bytesRead = 0;
+            if (!gameHandle || !ReadProcessMemory(gameHandle,
+                    reinterpret_cast<LPCVOID>(static_cast<std::uintptr_t>(pointerAddress)),
+                    &next, sizeof(next), &bytesRead) || bytesRead != sizeof(next))
+                throw std::runtime_error("pointer chain read failed");
+            if (next == 0)
+                throw std::runtime_error("null intermediate pointer in chain");
+            currentAddress = next;
         }
+        if (offsets.back() > (std::numeric_limits<DWORD>::max)() - currentAddress)
+            throw std::overflow_error("final value address overflow");
+        return ReadAddress<T>(currentAddress + offsets.back());
     }
     catch (const std::exception &e)
     {
         ShowErrorLog("ReadAddressOffsets", "Error: " + std::string(e.what()));
-        // Return a default value or handle the error as needed
-        return T();
+        return T{};
     }
-
-    return T();
 }
-
-
 
 /*
  * @brief Write address with offset
@@ -164,7 +179,7 @@ bool GTLibc::WriteAddressOffset(DWORD address, DWORD offset, const T &value)
 /*
  * @brief Write address with offsets
  * @param address - Address to write
- * @param offsets - Offsets to add to address
+ * @param offsets - Independent offsets relative to address (scatter writes, NOT a pointer chain).
  * @param value - Value to write to address
  * @return bool - True if write was successful else false
  *
@@ -173,13 +188,20 @@ bool GTLibc::WriteAddressOffset(DWORD address, DWORD offset, const T &value)
 template <typename T>
 bool GTLibc::WriteAddressOffsets(DWORD address, const std::vector<DWORD> &offsets, const T &value)
 {
-    AddLog("WriteAddressOffsets", "Trying to write to address: " + to_hex_string(address) + " with offsets: " + to_hex_string(offsets.size()) + " with value: " + std::to_string(value));
+    AddLog("WriteAddressOffsets", "Scatter writes to base + offset for address: " + to_hex_string(address) + " (for pointer chains, use WritePointerOffsets)");
+    if (offsets.empty())
+        return WriteAddress<T>(address, value);
+
     try
     {
         for (const DWORD &offset : offsets)
         {
-            WriteAddressOffset(address, offset, value);
+            if (offset > (std::numeric_limits<DWORD>::max)() - address)
+                return false;
+            if (!WriteAddressOffset(address, offset, value))
+                return false;
         }
+        return true;
     }
     catch (const std::exception &e)
     {

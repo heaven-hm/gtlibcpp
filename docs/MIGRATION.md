@@ -18,7 +18,7 @@ replacement and points out behavioural differences.
 | `GTLibc::ReadString(DWORD, size)`                | `MemorySession::read_string(address, capacity, require_nul)` |
 | `GTLibc::HotKeysDown(vector<int>)` (UB on empty) | Caller validates; no library method that can deref empty.     |
 | `GTLibc::ReadCheatTable(file, n)`                | `CheatTableParser::parse_file(file)` / `parse_string(xml)`   |
-| `GTLibc::ActivateCheatTableEntries(indices)`     | `AgentService::handle("apply", ...)` per entry               |
+| `GTLibc::ActivateCheatTableEntries(stable_entry_ids)`     | `AgentService::handle("apply", ...)` per entry               |
 | `g_GTLibc` global                                | Construct a `MemorySession`; pass into the helpers.          |
 | `g_CheatTable` global                            | Returned by `CheatTableParser::parse_*`; caller owns it.    |
 | Detached `std::thread` freeze                    | `FreezeManager` with joinable, cancellable workers           |
@@ -140,7 +140,7 @@ entries.
 // legacy
 auto table = trainer.ReadCheatTable("IGI.CT", -1);
 for (size_t i = 0; i < table.entries().size(); ++i) {
-    trainer.ActivateCheatTableEntries({static_cast<int>(i)});
+    trainer.ActivateCheatTableEntries({table.entries()[i]->Id});
 }
 
 // new
@@ -210,3 +210,5 @@ continue to compile when `GTLIBCPP_BUILD_DEMOS=ON`. New code
 should target the `gtlibcpp::*` core and link against
 `gtlibcpp::gtlibcpp_core` (cross-platform) and
 `gtlibcpp::gtlibcpp_win32` (Windows-only).
+
+**Legacy offset warning:** `ReadAddressOffsets<T>` uses a pointer chain: `address` is a pointer slot, intermediate offsets dereference subsequent pointers, and the final offset locates the typed value. By contrast, `WriteAddressOffsets<T>` writes independently to `address + offset` for each offset (scatter semantics), not to the resolved pointer chain. Do not pair them for read-modify-write operations. For a legacy chain, first read the pointer stored at `address`, then dereference each intermediate offset (all offsets except the last), and finally add the last offset to find the field. Do **not** pass unchanged legacy offsets to `MemorySession::resolve_pointer_chain`: that API traverses pointers at `base + offset` at every step, including the final offset. Write the typed value only to the verified final field address. The legacy activation method filters the cheat table by stable `CheatEntry::Id` and **removes** unselected entries; it does not toggle an entry in place.

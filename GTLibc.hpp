@@ -151,7 +151,9 @@ namespace GTLIBC
                                 const std::string hotkeyValue);
         void DisplayCheatTable(bool showMenuIndex = true, bool showMenuDescription = true, bool showMenuAction = false, bool showMenuHotkeys = true, bool showMenuValue = false);
         void ReadCheatTableEntries();
-        void ActivateCheatTableEntries(const std::vector<int> &cheatEntryIndex);
+        // Filters and retains only cheat table entries matching the provided stable IDs.
+        // NOTE: Destructive filter: unselected entries are pruned from g_CheatTable.
+        void ActivateCheatTableEntries(const std::vector<int> &cheatEntryIds);
         void ExecuteCheatTable(bool showTrainerOutput = false, int exitTrainerKey = EXIT_TRAINER_KEY, bool showMenuIndex = true, bool showMenuDescription = true, bool showMenuAction = false, bool showMenuHotkeys = true);
 #endif
 
