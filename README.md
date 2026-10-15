@@ -117,7 +117,7 @@ Addresses and offsets are JSON **integers** (decimal notation), not quoted hexad
 | `verify` | `{"address":4198400,"size":4,"expected_hash":"..."}` | Compares a content hash. |
 | `restore` | `{"freeze_id":"ammo"}` | Disabled over RPC until authenticated rollback authorization is implemented. |
 | `freeze` | `{"id":"ammo","address":4198400,"type":"uint32","value":100,"interval_ms":50}` | Starts periodic writes. |
-| `unfreeze` | `{"id":"ammo"}` | Stops the worker; does not restore the original value. |
+| `unfreeze` | `{"id":"ammo"}` | Currently denied over JSON-RPC until scoped operator authorization is implemented; trusted C++ callers may use `FreezeManager::unfreeze`. |
 | `status` | `{"id":"ammo"}` or `{}` | Queries freeze status. |
 | `parse` | `{"xml":"<CheatTable/>"}` | Parses a Cheat Engine XML table. |
 | `kill_switch` | `{"engage":true,"reason":"operator"}` | Engages the safety switch; RPC release is denied without trusted-host authorization. |
