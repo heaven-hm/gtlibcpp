@@ -114,8 +114,9 @@ T GTLibc::ReadAddressOffsets(DWORD address, const std::vector<DWORD> &offsets)
     try
     {
         DWORD currentAddress = address;
-        for (DWORD offset : offsets)
+        for (std::size_t i = 0; i + 1 < offsets.size(); ++i)
         {
+            const DWORD offset = offsets[i];
             if (offset > (std::numeric_limits<DWORD>::max)() - currentAddress)
                 throw std::overflow_error("pointer offset address overflow");
             const DWORD pointerAddress = currentAddress + offset;
@@ -123,11 +124,15 @@ T GTLibc::ReadAddressOffsets(DWORD address, const std::vector<DWORD> &offsets)
             SIZE_T bytesRead = 0;
             if (!gameHandle || !ReadProcessMemory(gameHandle,
                     reinterpret_cast<LPCVOID>(static_cast<std::uintptr_t>(pointerAddress)),
-                    &next, sizeof(next), &bytesRead) || bytesRead != sizeof(next) || next == 0)
+                    &next, sizeof(next), &bytesRead) || bytesRead != sizeof(next))
                 throw std::runtime_error("pointer chain read failed");
+            if (next == 0)
+                throw std::runtime_error("null intermediate pointer in chain");
             currentAddress = next;
         }
-        return ReadAddress<T>(currentAddress);
+        if (offsets.back() > (std::numeric_limits<DWORD>::max)() - currentAddress)
+            throw std::overflow_error("final value address overflow");
+        return ReadAddress<T>(currentAddress + offsets.back());
     }
     catch (const std::exception &e)
     {
