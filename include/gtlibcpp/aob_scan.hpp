@@ -1,5 +1,6 @@
 #pragma once
 #include "gtlibcpp/memory_session.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <cstddef>
 #include <string_view>
