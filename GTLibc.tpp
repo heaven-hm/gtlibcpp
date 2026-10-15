@@ -5,6 +5,8 @@ for full implementation, see GTLibc.cpp
 
 #pragma once
 #include "GTLibc.hpp"
+#include <limits>
+#include <cstdint>
 using namespace GTLIBC;
 
 /*
@@ -105,35 +107,34 @@ T GTLibc::ReadAddressOffset(DWORD address, DWORD offset)
 template <typename T>
 T GTLibc::ReadAddressOffsets(DWORD address, const std::vector<DWORD> &offsets)
 {
-    AddLog("ReadAddressOffsets", "Trying to read address with offsets: " + to_hex_string(address));
-
-    std::ostringstream oss;
-    for (auto d : offsets)
-        oss << to_hex_string(d) << ",";
-
-    std::string result = oss.str();
-    result.pop_back();
-    AddLog("ReadPointerOffsets", "Offsets: " + result);
+    AddLog("ReadAddressOffsets", "Resolving offsets from: " + to_hex_string(address));
+    if (offsets.empty())
+        return ReadAddress<T>(address);
 
     try
     {
         DWORD currentAddress = address;
         for (DWORD offset : offsets)
         {
-            currentAddress = ReadAddress<DWORD>(currentAddress + offset);
+            if (offset > (std::numeric_limits<DWORD>::max)() - currentAddress)
+                throw std::overflow_error("pointer offset address overflow");
+            const DWORD pointerAddress = currentAddress + offset;
+            DWORD next = 0;
+            SIZE_T bytesRead = 0;
+            if (!gameHandle || !ReadProcessMemory(gameHandle,
+                    reinterpret_cast<LPCVOID>(static_cast<std::uintptr_t>(pointerAddress)),
+                    &next, sizeof(next), &bytesRead) || bytesRead != sizeof(next) || next == 0)
+                throw std::runtime_error("pointer chain read failed");
+            currentAddress = next;
         }
+        return ReadAddress<T>(currentAddress);
     }
     catch (const std::exception &e)
     {
         ShowErrorLog("ReadAddressOffsets", "Error: " + std::string(e.what()));
-        // Return a default value or handle the error as needed
-        return T();
+        return T{};
     }
-
-    return T();
 }
-
-
 
 /*
  * @brief Write address with offset
@@ -178,8 +179,12 @@ bool GTLibc::WriteAddressOffsets(DWORD address, const std::vector<DWORD> &offset
     {
         for (const DWORD &offset : offsets)
         {
-            WriteAddressOffset(address, offset, value);
+            if (offset > (std::numeric_limits<DWORD>::max)() - address)
+                return false;
+            if (!WriteAddressOffset(address, offset, value))
+                return false;
         }
+        return true;
     }
     catch (const std::exception &e)
     {
