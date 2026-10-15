@@ -122,14 +122,15 @@ JsonValue tool_call(AgentService& agent, const JsonValue& params) {
 } // namespace
 
 int main(int argc, char** argv) {
-    const bool direct_rpc = argc == 2 && std::string(argv[1]) == "--json-rpc";
-    const bool self_test = argc == 2 && std::string(argv[1]) == "--self-test";
+    bool direct_rpc = false;
+    bool self_test = false;
     std::uint32_t pid = 0;
     gtlibcpp::Architecture architecture = gtlibcpp::Architecture::unknown;
     std::string image_path;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
-        if (arg == "--json-rpc" || arg == "--self-test") continue;
+        if (arg == "--json-rpc") { direct_rpc = true; continue; }
+        if (arg == "--self-test") { self_test = true; continue; }
         try {
             if (arg.rfind("--pid=", 0) == 0) {
                 std::size_t used = 0;
