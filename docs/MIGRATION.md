@@ -18,7 +18,7 @@ replacement and points out behavioural differences.
 | `GTLibc::ReadString(DWORD, size)`                | `MemorySession::read_string(address, capacity, require_nul)` |
 | `GTLibc::HotKeysDown(vector<int>)` (UB on empty) | Caller validates; no library method that can deref empty.     |
 | `GTLibc::ReadCheatTable(file, n)`                | `CheatTableParser::parse_file(file)` / `parse_string(xml)`   |
-| `GTLibc::ActivateCheatTableEntries(indices)`     | `AgentService::handle("apply", ...)` per entry               |
+| `GTLibc::ActivateCheatTableEntries(stable_entry_ids)`     | `AgentService::handle("apply", ...)` per entry               |
 | `g_GTLibc` global                                | Construct a `MemorySession`; pass into the helpers.          |
 | `g_CheatTable` global                            | Returned by `CheatTableParser::parse_*`; caller owns it.    |
 | Detached `std::thread` freeze                    | `FreezeManager` with joinable, cancellable workers           |
@@ -140,7 +140,7 @@ entries.
 // legacy
 auto table = trainer.ReadCheatTable("IGI.CT", -1);
 for (size_t i = 0; i < table.entries().size(); ++i) {
-    trainer.ActivateCheatTableEntries({static_cast<int>(i)});
+    trainer.ActivateCheatTableEntries({table.entries()[i]->Id});
 }
 
 // new
