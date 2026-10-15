@@ -1,3 +1,4 @@
+#include <limits>
 #include "GTLibc.hpp"
 using namespace GTLIBC;
 
@@ -679,7 +680,23 @@ void GTLibc::ExecuteCheatTable(bool showTrainerOutput, int exitTrainerKey, bool 
  */
 void GTLibc::AddCheatTableEntry(const std::string &description, const std::string &dataType, const DWORD address, const std::vector<DWORD> &offsets, const std::vector<int> &hotkeys, const std::string &hotkeyAction, const std::string hotkeyValue)
 {
-    int id = g_CheatTable.cheatEntries.size();
+    // IDs must stay unique after filtering removes entries from the vector.
+    // Preserve uniqueness even if the table is pruned and later extended.
+    static int next_id = 0;
+    for (const auto& entry : g_CheatTable.cheatEntries) {
+        if (entry && entry->Id >= next_id) {
+            if (entry->Id == (std::numeric_limits<int>::max)()) {
+                ShowErrorLog("AddCheatTableEntry", "Cheat entry ID space exhausted");
+                return;
+            }
+            next_id = entry->Id + 1;
+        }
+    }
+    if (next_id == (std::numeric_limits<int>::max)()) {
+        ShowErrorLog("AddCheatTableEntry", "Cheat entry ID space exhausted");
+        return;
+    }
+    const int id = next_id++;
     const HOTKEYS hotkey = {make_tuple(hotkeyAction, hotkeys, hotkeyValue, 0)};
     g_CheatTable.AddCheatEntry(description, id, dataType, address, offsets, hotkey);
 }
