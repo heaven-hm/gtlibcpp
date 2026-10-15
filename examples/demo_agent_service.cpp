@@ -103,10 +103,11 @@ int main() {
     std::cout << "    Status Reply: " << status_reply << "\n";
     assert(status_reply.find("\"error\"") == std::string::npos);
 
-    // 8. Unfreeze via JSON-RPC
+    // 8. Unfreeze via JSON-RPC (unauthenticated RPC is denied; trusted host stops worker via FreezeManager)
     std::string unfreeze_reply = rpc_call("unfreeze", R"({"id":"agent_freeze_1"})", "7");
     std::cout << "    Unfreeze Reply: " << unfreeze_reply << "\n";
-    assert(unfreeze_reply.find("\"error\"") == std::string::npos);
+    assert(unfreeze_reply.find("\"error\"") != std::string::npos);
+    assert(freeze_mgr->unfreeze("agent_freeze_1"));
 
     // 9. Emergency Kill Switch
     std::cout << "[*] Dispatching RPC 'kill_switch' engage...\n";

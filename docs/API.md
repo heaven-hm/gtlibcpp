@@ -232,6 +232,10 @@ public:
 
     // Multi-offset typed write. Stops at the first failed step and
     // reports the failed address.
+    //
+    // IMPORTANT: Returns Result<BatchResult>::success even on partial completion.
+    // Callers MUST check `BatchResult::complete` (or `BatchResult::ok()`) to verify
+    // full completion. Earlier writes are committed and NOT rolled back.
     template <typename T>
     Result<BatchResult> write_offsets(
         Address base, const std::vector<Address>& offsets, const T& value);
@@ -256,12 +260,24 @@ public:
 
 ### `struct BatchResult`
 
+> [!IMPORTANT]
+> Both `read_offsets` and `write_offsets` return `Result<BatchResult>::success`
+> with a `BatchResult` even when an offset operation fails mid-batch.
+> Checking only `if (result.ok())` on the outer `Result` is NOT sufficient to verify
+> that all operations succeeded! Callers must inspect `result.value().complete`
+> (or `result.value().ok()`), `result.value().completed_addresses`, and `result.value().failure`.
+>
+> Earlier writes in `write_offsets` are committed and NOT rolled back on failure.
+
 ```cpp
 struct BatchResult {
     bool complete{true};
     std::vector<Address> completed_addresses{};
     std::vector<Address> attempted_addresses{};
     std::optional<Error> failure{};
+
+    [[nodiscard]] bool ok() const noexcept { return complete; }
+    [[nodiscard]] explicit operator bool() const noexcept { return complete; }
 
     static BatchResult ok_full(std::vector<Address> done);
     static BatchResult partial(std::vector<Address> done,

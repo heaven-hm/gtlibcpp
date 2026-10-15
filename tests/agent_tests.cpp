@@ -229,10 +229,22 @@ GTLIBCPP_TEST(kill_switch_engages_and_blocks) {
 GTLIBCPP_TEST(restore_rpc_and_kill_release_are_denied) {
     std::shared_ptr<FakeBackend> backend;
     auto svc = build_service(backend);
+    auto unfreeze_req = svc->handle(R"({"jsonrpc":"2.0","id":"uf","method":"unfreeze","params":{"id":"freeze-1"}})");
+    GTLIBCPP_REQUIRE(unfreeze_req);
+    auto unfrozen = gtlibcpp::json_decode(unfreeze_req.value());
+    GTLIBCPP_REQUIRE(unfrozen && gtlibcpp::json_get(unfrozen.value(), "error"));
+    const auto* unfrozen_err = gtlibcpp::json_get(unfrozen.value(), "error");
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*unfrozen_err, "code"), 5001);
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_string(*unfrozen_err, "data"), "policy_denied");
+
     auto restore = svc->handle(R"({"jsonrpc":"2.0","id":"r","method":"restore","params":{"freeze_id":"freeze-1"}})");
     GTLIBCPP_REQUIRE(restore);
     auto restored = gtlibcpp::json_decode(restore.value());
     GTLIBCPP_REQUIRE(restored && gtlibcpp::json_get(restored.value(), "error"));
+    const auto* restored_err = gtlibcpp::json_get(restored.value(), "error");
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*restored_err, "code"), 5001);
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_string(*restored_err, "data"), "policy_denied");
+
     auto engage = svc->handle(R"({"jsonrpc":"2.0","id":"k","method":"kill_switch","params":{"engage":true}})");
     GTLIBCPP_REQUIRE(engage);
     auto release = svc->handle(R"({"jsonrpc":"2.0","id":"u","method":"kill_switch","params":{"engage":false}})");
@@ -276,6 +288,9 @@ GTLIBCPP_TEST(freeze_and_status_round_trip) {
     GTLIBCPP_REQUIRE(sr);
     auto ur = svc->handle(R"({"jsonrpc":"2.0","id":"11","method":"unfreeze","params":{"id":"freeze-1"}})");
     GTLIBCPP_REQUIRE(ur);
+    auto ur_json = gtlibcpp::json_decode(ur.value());
+    GTLIBCPP_REQUIRE(ur_json && gtlibcpp::json_get(ur_json.value(), "error"));
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*gtlibcpp::json_get(ur_json.value(), "error"), "code"), 5001);
 }
 
 GTLIBCPP_TEST(freeze_float_preserves_fractional_value) {
@@ -298,6 +313,9 @@ GTLIBCPP_TEST(freeze_float_preserves_fractional_value) {
     std::this_thread::sleep_for(std::chrono::milliseconds(30));
     auto end = svc->handle(R"({"jsonrpc":"2.0","id":"u","method":"unfreeze","params":{"id":"float-fr"}})");
     GTLIBCPP_REQUIRE(end);
+    auto end_json = gtlibcpp::json_decode(end.value());
+    GTLIBCPP_REQUIRE(end_json && gtlibcpp::json_get(end_json.value(), "error"));
+    GTLIBCPP_REQUIRE_EQ(gtlibcpp::json_get_int(*gtlibcpp::json_get(end_json.value(), "error"), "code"), 5001);
     auto bytes = backend->read(8192, 4);
     GTLIBCPP_REQUIRE(bytes);
     float value = 0.0f;

@@ -48,7 +48,7 @@ the integer.
 | `verify`        | read             | Re-read an address (for post-apply verification).              |
 | `restore`       | rollback         | Currently denied over RPC pending authenticated rollback authorization. |
 | `freeze`        | freeze           | Start a freeze; returns the freeze id.                         |
-| `unfreeze`      | unfreeze         | Stop a freeze without restoring.                               |
+| `unfreeze`      | unfreeze         | Disabled over unauthenticated JSON-RPC; trusted host calls `FreezeManager::unfreeze`. |
 | `status`        | read             | Return freeze status (single or all).                         |
 | `parse`         | parse            | Parse a `.ct` payload; return supported / unsupported / diagnostics. |
 | `kill_switch`   | (operator-only)  | Engage the kill switch; release requires trusted host code.  |
@@ -205,12 +205,19 @@ does not require approval.
 ```
 
 ```json
-{ "jsonrpc": "2.0", "id": "7", "result": { "restored": true } }
+{
+  "jsonrpc": "2.0",
+  "id": "7",
+  "error": {
+    "code": 5001,
+    "message": "restore RPC disabled until rollback authorization is implemented",
+    "data": "policy_denied"
+  }
+}
 ```
 
-`restore` requires `Capability::rollback` and an approved token.
-The freeze entry is marked `restored = true` after the original
-value is written back.
+`restore` is disabled over unauthenticated JSON-RPC to prevent unauthorized state rollback.
+Trusted host code may call `FreezeManager::restore` directly following appropriate operator authorization.
 
 ### `freeze` (request)
 
@@ -246,11 +253,20 @@ interpreted as an unsigned 64-bit integer; cast to `float` or
 ```
 
 ```json
-{ "jsonrpc": "2.0", "id": "9", "result": { "unfrozen": true } }
+{
+  "jsonrpc": "2.0",
+  "id": "9",
+  "error": {
+    "code": 5001,
+    "message": "unfreeze RPC disabled until scoped authorization is implemented",
+    "data": "policy_denied"
+  }
+}
 ```
 
-`unfreeze` stops the worker without restoring the original value.
-Use `restore` to put the original value back.
+`unfreeze` over unauthenticated JSON-RPC is denied with `policy_denied`
+until scoped operator authorization exists. Trusted host code stops its own
+worker with `FreezeManager::unfreeze` directly, or calls `FreezeManager::cancel_all()` on shutdown.
 
 ### `status` (request)
 

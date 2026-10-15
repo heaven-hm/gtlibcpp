@@ -46,10 +46,10 @@ Header: [`include/gtlibcpp/memory_session.hpp`](include/gtlibcpp/memory_session.
 | `write_bytes(Address address, const std::vector<uint8_t>& data)` | `Result<std::size_t>` | Writes a sequence of bytes directly into target process memory. |
 | `resolve_pointer_chain(Address base_address, const std::vector<Address>& offsets)` | `Result<Address>` | Traverses multi-level pointer chains according to target architecture. |
 | `read_offsets<T>(Address base, const std::vector<Address>& offsets)` | `Result<BatchResult>` | Reads typed values across multiple structured offsets in a single batch. |
-| `write_offsets<T>(Address base, const std::vector<Address>& offsets, const T& val)` | `Result<BatchResult>` | Writes typed values across multiple offsets with atomic rollback on error. |
+| `write_offsets<T>(Address base, const std::vector<Address>& offsets, const T& val)` | `Result<BatchResult>` | Writes typed values across offsets, stopping at the first error. NOTE: Returns `Result::success` even on partial failure; callers MUST check `BatchResult::complete` (or `ok()`) to verify full completion. Earlier writes are committed and not rolled back. |
 | `read_string(Address address, std::size_t capacity, bool require_nul = true)` | `Result<BoundedString>` | Reads a bounded string safely validating UTF-8 and capacity. |
 | `write_string(Address address, const BoundedString& str, std::size_t capacity)` | `Result<std::size_t>` | Writes a BoundedString with null-terminator into target memory. |
-| `compare_write_verify<T>(Address address, const T& value)` | `Result<bool>` | Atomic compare-before-write: verifies target memory before and after applying change. |
+| `compare_write_verify<T>(Address address, const T& value, std::uint32_t max_attempts = 1)` | `Result<T>` | Writes a value, reads it back, and retries while verification mismatches, bounded by `max_attempts` (default: one attempt, no retry). Returns the requested value on match; exhausting the budget on mismatch returns `verification_mismatch`. Not an atomic compare-and-swap. |
 
 ### 2. Freeze & Worker Management (`gtlibcpp::FreezeManager`)
 Header: [`include/gtlibcpp/freeze.hpp`](include/gtlibcpp/freeze.hpp)
@@ -117,7 +117,7 @@ Addresses and offsets are JSON **integers** (decimal notation), not quoted hexad
 | `verify` | `{"address":4198400,"size":4,"expected_hash":"..."}` | Compares a content hash. |
 | `restore` | `{"freeze_id":"ammo"}` | Disabled over RPC until authenticated rollback authorization is implemented. |
 | `freeze` | `{"id":"ammo","address":4198400,"type":"uint32","value":100,"interval_ms":50}` | Starts periodic writes. |
-| `unfreeze` | `{"id":"ammo"}` | Stops the worker; does not restore the original value. |
+| `unfreeze` | `{"id":"ammo"}` | Currently denied over JSON-RPC until scoped operator authorization is implemented; trusted C++ callers may use `FreezeManager::unfreeze`. |
 | `status` | `{"id":"ammo"}` or `{}` | Queries freeze status. |
 | `parse` | `{"xml":"<CheatTable/>"}` | Parses a Cheat Engine XML table. |
 | `kill_switch` | `{"engage":true,"reason":"operator"}` | Engages the safety switch; RPC release is denied without trusted-host authorization. |

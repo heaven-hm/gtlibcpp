@@ -86,8 +86,12 @@ if (!b.value().complete) {
 
 ```cpp
 auto b = session.write_offsets<uint32_t>(0x1000, {0, 4, 8}, 0xAA);
+// Note: write_offsets returns Result::success even on partial failure so
+// callers can inspect completed_addresses. Callers MUST check b.value().complete
+// (or b.value().ok()). Earlier writes are committed and NOT rolled back on failure.
 if (!b.ok() || !b.value().complete) {
     // b.value().completed_addresses tells you which ones succeeded
+    // b.value().failure contains the failing address and error code
 }
 ```
 

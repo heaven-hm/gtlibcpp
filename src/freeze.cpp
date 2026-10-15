@@ -48,11 +48,17 @@ Result<void> FreezeManager::freeze(FreezeRequest request) {
                 ErrorCode::invalid_address, "freeze address is 0",
                 "FreezeManager::freeze"));
         }
-        if (request.size == 0) request.size = size_for_type(request.type_name);
-        if (request.size == 0 || request.size > sizeof(std::uint64_t)) {
+        const std::size_t required_size = size_for_type(request.type_name);
+        if (required_size == 0) {
             return Result<void>::failure(make_error(
                 ErrorCode::invalid_type, "unknown freeze type " + request.type_name,
                 "FreezeManager::freeze", request.address));
+        }
+        if (request.size == 0) request.size = required_size;
+        if (request.size != required_size) {
+            return Result<void>::failure(make_error(
+                ErrorCode::invalid_size, "freeze size does not match type " + request.type_name,
+                "FreezeManager::freeze", request.address, request.size));
         }
         if (request.id.empty()) {
             return Result<void>::failure(make_error(
@@ -77,8 +83,11 @@ Result<void> FreezeManager::freeze(FreezeRequest request) {
                 }
                 // unfreeze/restore clears active only after the worker joined.
                 // This entry is now quiescent and safe to replace.
-                if (existing->second->worker.joinable()) {
-                    existing->second->worker.join();
+                {
+                    std::lock_guard<std::mutex> wlock(existing->second->worker_mutex);
+                    if (existing->second->worker.joinable()) {
+                        existing->second->worker.join();
+                    }
                 }
                 entries_.erase(existing);
             }
@@ -186,9 +195,12 @@ Result<void> FreezeManager::unfreeze(const std::string& id) {
         }
         entry = it->second;
     }
-    if (entry->worker.joinable()) {
-        entry->cancel->store(true);
-        entry->worker.join();
+    {
+        std::lock_guard<std::mutex> wlock(entry->worker_mutex);
+        if (entry->worker.joinable()) {
+            entry->cancel->store(true);
+            entry->worker.join();
+        }
     }
     entry->active.store(false);
     return Result<void>::success();
@@ -207,9 +219,12 @@ Result<void> FreezeManager::restore(const std::string& id) {
         }
         entry = it->second;
     }
-    if (entry->worker.joinable()) {
-        entry->cancel->store(true);
-        entry->worker.join();
+    {
+        std::lock_guard<std::mutex> wlock(entry->worker_mutex);
+        if (entry->worker.joinable()) {
+            entry->cancel->store(true);
+            entry->worker.join();
+        }
     }
     const auto restored = session_->write_bytes(
         entry->request.address, entry->original_bytes);
@@ -300,6 +315,7 @@ void FreezeManager::cancel_all() {
         entry->active.store(false);
     }
     for (auto& entry : snapshot) {
+        std::lock_guard<std::mutex> wlock(entry->worker_mutex);
         if (entry->worker.joinable()) {
             entry->worker.join();
         }
