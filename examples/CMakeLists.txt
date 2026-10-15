@@ -14,3 +14,15 @@ if(WIN32)
         target_link_libraries(${example_target} PRIVATE gtlibcpp::gtlibcpp_core gtlibcpp::gtlibcpp_win32)
     endforeach()
 endif()
+
+add_executable(assaultcube_trainer assaultcube_trainer.cpp)
+target_link_libraries(assaultcube_trainer PRIVATE gtlibcpp::gtlibcpp_core)
+if(WIN32)
+    target_link_libraries(assaultcube_trainer PRIVATE gtlibcpp::gtlibcpp_win32)
+endif()
+if(APPLE)
+    add_custom_command(TARGET assaultcube_trainer POST_BUILD
+        COMMAND codesign -s - -f $<TARGET_FILE:assaultcube_trainer>
+        COMMENT "Codesigning assaultcube_trainer"
+    )
+endif()

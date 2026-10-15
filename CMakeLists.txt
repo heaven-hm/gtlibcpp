@@ -89,6 +89,23 @@ if(GTLIBCPP_BUILD_TESTS)
     endif()
 endif()
 
+# Example: Standalone AssaultCube trainer with HUD telemetry and memory freezing
+add_executable(assaultcube_trainer_example examples/assaultcube_trainer.cpp)
+target_link_libraries(assaultcube_trainer_example PRIVATE gtlibcpp::core)
+if(WIN32)
+    target_link_libraries(assaultcube_trainer_example PRIVATE gtlibcpp::win32)
+endif()
+if(APPLE)
+    add_custom_command(TARGET assaultcube_trainer_example POST_BUILD
+        COMMAND codesign -s - --entitlements ${CMAKE_CURRENT_SOURCE_DIR}/cmake/entitlements.plist -f $<TARGET_FILE:assaultcube_trainer_example>
+        COMMENT "Codesigning assaultcube_trainer_example with entitlements"
+    )
+endif()
+install(TARGETS assaultcube_trainer_example RUNTIME DESTINATION bin)
+if(GTLIBCPP_BUILD_TESTS)
+    add_test(NAME assaultcube_trainer_example_test COMMAND assaultcube_trainer_example)
+endif()
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 

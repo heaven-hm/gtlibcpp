@@ -278,3 +278,23 @@ endif()
 #include "gtlibcpp/windows_backend.hpp"
 // ... uses the same API as the example above ...
 ```
+
+## 9. Full AssaultCube Trainer Example (macOS Mach & Windows)
+
+Source: [`examples/assaultcube_trainer.cpp`](file:///Users/haseeb-mir/Documents/Code/gtlibcpp/examples/assaultcube_trainer.cpp)
+
+This example demonstrates complete end-to-end game automation for AssaultCube (offline/sandbox):
+1. **Target Discovery & ASLR**: Uses `find_darwin_process` on macOS or `find_game_process` on Windows, then calculates dynamic ASLR slide with `get_darwin_module_base`.
+2. **LocalPlayer Resolution**: Resolves the 64-bit static pointer `player1` (`base + 0x1CBD38` on macOS, `0x17E0A8` on Windows).
+3. **HUD Telemetry**: Reads Health (`+0x100`), Armor (`+0x104`), Weapon Selection (`+0x108`), Clip/Reserve Ammo, and 3D Coordinates.
+4. **Trainer Actions**:
+   - Restores Health & Armor to 100 HP / 100 AP.
+   - Activates Unlimited Ammo by locking rifle clip at 999 using `FreezeManager`.
+   - Performs High Jump (+10.0 ZCord) and restores memory non-destructively.
+
+```bash
+# Build and run the standalone example
+cmake --build build --target assaultcube_trainer_example
+./build/assaultcube_trainer_example
+```
+

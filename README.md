@@ -53,20 +53,103 @@ int main() {
 
 For scanning and rescanning examples, see [game-memory guide](docs/GAME_MEMORY_GUIDE.md). For write/restore, freeze, agent authorization and CMake consumers, see [examples](docs/EXAMPLES.md).
 
-## CLI Trainer (`gt_trainer_cli`)
+## CLI Trainer (`gt_trainer_cli`) & Examples
 
-A full command-line game trainer utility leveraging `CheatTableParser`, `MemorySession`, and `FreezeManager`:
+A complete, table-driven command-line game trainer utility leveraging [`CheatTableParser`](include/gtlibcpp/parser.hpp), [`MemorySession`](include/gtlibcpp/memory_session.hpp), and [`FreezeManager`](include/gtlibcpp/freeze.hpp):
+
+### Running the Interactive Trainer
 
 ```bash
-# List cheats and hotkey combinations from a Cheat Engine table
-./build/gt_trainer_cli --list --table demos/CheatTable/assaultcube.ct
+# On macOS (AssaultCube 64-bit with Mach task port attachment):
+./build/gt_trainer_cli --table demos/CheatTable/assaultcube_mac.ct
 
-# Run automated hotkey detection and memory verification test
-./build/gt_trainer_cli --test demos/CheatTable/assaultcube.ct
-
-# Run interactive trainer (supports keyboard hotkeys: [H] Health, [A] Unlimited Ammo, [Z] High Jump)
+# On Windows (AssaultCube 32-bit via Win32 backend):
 ./build/gt_trainer_cli --table demos/CheatTable/assaultcube.ct
+
+# Run automated hotkey detection and non-destructive memory verification test:
+./build/gt_trainer_cli --test
+
+# List discovered cheat entries and hotkey bindings:
+./build/gt_trainer_cli --list
 ```
+
+### Live Interactive Hotkey Controls
+
+| Hotkey | Action | Description |
+| :--- | :--- | :--- |
+| **`[H]`** / `Ctrl+H` | **Set Health & Armor** | Restores Health to 100 HP and Armor to 100 AP |
+| **`[A]`** / `Ctrl+A` | **Unlimited Ammo** | Freezes active clip and maintains 999 ammo across all 9 weapon slots |
+| **`[Z]`** / `Ctrl+Z` | **High Jump** | Increases player elevation by +10.0 units (`ZCord`) |
+| **`[S]`** | **Display Status** | Prints full player telemetry (Health, Armor, Active Weapon, Ammo, 3D Pos) |
+| **`[Q]`** | **Quit Trainer** | Cancels all memory freezes and exits cleanly |
+
+### Real-Time Live HUD Telemetry Output
+
+```text
+========================================================
+  gtlibcpp CLI Trainer & Hotkey Controller v1.0.0
+========================================================
+[+] Loaded Cheat Table: demos/CheatTable/assaultcube_mac.ct (CE Version: 0)
+[+] Discovered Entries: 14
+[+] Detected running game process: PID 66115 (/Applications/AssaultCube.app/.../assaultcube)
+[+] Successfully attached to live macOS target process via Mach task port!
+[+] Discovered live ASLR module base for assaultcube: 0x1024e1000
+[+] Resolved Target Addresses:
+    Player Base    : 0x7ff044014600
+    Health Address : 0x7ff044014700
+    Armor Address  : 0x7ff044014704
+    Ammo Address   : 0x7ff044014754
+    ZCord Address  : 0x7ff044014610
+
+--- Current Memory State ---
+  Health   : 100 HP
+  Armor    : 50 AP
+  Weapon   : Assault Rifle [Clip: 20 | Reserve: 60] [NORMAL]
+  Position : (59.50, 47.17, 4.50)
+----------------------------
+
+[Loop Active] HP: 100 | Armor: 50 | Assault Rifle: 20/60 [NORMAL] | Pos: (59.5, 47.2, 4.5) | ([H], [A], [Z], [Q] to quit)
+```
+
+### Standalone C++ Trainer Example
+
+The repository includes a self-contained, cross-platform trainer example in [`examples/assaultcube_trainer.cpp`](examples/assaultcube_trainer.cpp):
+
+```cpp
+#include "gtlibcpp/darwin_backend.hpp"
+#include "gtlibcpp/memory_session.hpp"
+#include "gtlibcpp/freeze.hpp"
+
+// 1. Discover game PID and live ASLR module base
+const auto pid = gtlibcpp::find_darwin_process({"assaultcube"});
+const auto base = gtlibcpp::get_darwin_module_base(pid, "assaultcube");
+
+// 2. Attach to target process
+gtlibcpp::DarwinBackendOptions opts{};
+opts.pid = pid;
+opts.architecture = gtlibcpp::Architecture::x64;
+auto backend = gtlibcpp::make_darwin_backend(opts);
+gtlibcpp::MemorySession session(backend);
+
+// 3. Resolve local player pointer (base + 0x1CBD38)
+auto player1 = session.read<std::uint64_t>(base + 0x1CBD38ULL).value();
+
+// 4. Restore Health & Armor (100 HP / 100 AP)
+session.write<std::uint32_t>(player1 + 0x100, 100);
+session.write<std::uint32_t>(player1 + 0x104, 100);
+
+// 5. Freeze Rifle Ammo at 999 using FreezeManager
+gtlibcpp::FreezeManager freeze(std::make_shared<gtlibcpp::MemorySession>(backend));
+gtlibcpp::FreezeRequest req{"ammo", player1 + 0x154, "uint32", 999, std::chrono::milliseconds(20), 4};
+freeze.freeze(req);
+```
+
+Build and run the standalone example directly:
+```bash
+cmake --build build --target assaultcube_trainer_example
+./build/assaultcube_trainer_example
+```
+
 
 ## Screenshots
 

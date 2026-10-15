@@ -116,13 +116,16 @@ std::uint32_t find_darwin_process(const std::vector<std::string>& process_names)
     if (bytes <= 0) return 0;
     const int count = bytes / static_cast<int>(sizeof(pid_t));
 
+    const pid_t self_pid = getpid();
     for (int i = 0; i < count; ++i) {
-        if (pids[i] <= 0) continue;
+        if (pids[i] <= 0 || pids[i] == self_pid) continue;
         char path_buffer[PROC_PIDPATHINFO_MAXSIZE];
         if (proc_pidpath(pids[i], path_buffer, sizeof(path_buffer)) > 0) {
             std::string path(path_buffer);
+            const auto slash = path.find_last_of('/');
+            const std::string filename = (slash != std::string::npos) ? path.substr(slash + 1) : path;
             for (const auto& name : process_names) {
-                if (path.find(name) != std::string::npos) {
+                if (filename == name || (filename.find(name) == 0 && filename.find("trainer") == std::string::npos)) {
                     return static_cast<std::uint32_t>(pids[i]);
                 }
             }
