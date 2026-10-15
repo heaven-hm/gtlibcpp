@@ -38,6 +38,7 @@ bool TargetManifest::matches(const TargetIdentity& id) const noexcept {
     if (!architecture.empty()) {
         if (architecture == "x86" && id.architecture != Architecture::x86) return false;
         if (architecture == "x64" && id.architecture != Architecture::x64) return false;
+        if (architecture != "x86" && architecture != "x64") return false;
     }
     return true;
 }
