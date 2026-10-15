@@ -886,13 +886,16 @@ Result<std::string> AgentService::handle(const std::string& request_json) {
 }
 
 void AgentService::serve(std::shared_ptr<IAgentTransport> transport) {
+    if (!transport || server_thread_.joinable()) return;
     stop_flag_.store(false);
     active_transport_ = transport;
     server_thread_ = std::thread([this, transport]() {
         while (!stop_flag_.load()) {
             auto request = transport->receive();
             if (!request) {
-                if (stop_flag_.load()) return;
+                if (stop_flag_.load() || request.error().code == ErrorCode::not_connected) return;
+                // A timeout is expected; other persistent transport errors must not spin.
+                if (request.error().code != ErrorCode::timeout) return;
                 continue;
             }
             auto response = handle(request.value());
