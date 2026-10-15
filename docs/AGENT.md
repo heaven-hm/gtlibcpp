@@ -48,7 +48,7 @@ the integer.
 | `verify`        | read             | Re-read an address (for post-apply verification).              |
 | `restore`       | rollback         | Currently denied over RPC pending authenticated rollback authorization. |
 | `freeze`        | freeze           | Start a freeze; returns the freeze id.                         |
-| `unfreeze`      | unfreeze         | Stop a freeze without restoring.                               |
+| `unfreeze`      | unfreeze         | Disabled over unauthenticated JSON-RPC; trusted host calls `FreezeManager::unfreeze`. |
 | `status`        | read             | Return freeze status (single or all).                         |
 | `parse`         | parse            | Parse a `.ct` payload; return supported / unsupported / diagnostics. |
 | `kill_switch`   | (operator-only)  | Engage the kill switch; release requires trusted host code.  |
