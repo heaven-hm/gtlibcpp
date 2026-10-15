@@ -73,6 +73,7 @@ private:
         std::atomic<std::size_t> fail_count{0};
         mutable std::mutex status_mutex{};
         std::string last_error{};
+        mutable std::mutex worker_mutex{};
     };
 
     static std::size_t size_for_type(const std::string& type_name);

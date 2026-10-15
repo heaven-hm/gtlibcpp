@@ -205,12 +205,18 @@ does not require approval.
 ```
 
 ```json
-{ "jsonrpc": "2.0", "id": "7", "result": { "restored": true } }
+{
+  "jsonrpc": "2.0",
+  "id": "7",
+  "error": {
+    "code": 5001,
+    "message": "restore RPC disabled until rollback authorization is implemented"
+  }
+}
 ```
 
-`restore` requires `Capability::rollback` and an approved token.
-The freeze entry is marked `restored = true` after the original
-value is written back.
+`restore` is disabled over unauthenticated JSON-RPC to prevent unauthorized state rollback.
+Trusted host code may call `FreezeManager::restore` directly following appropriate operator authorization.
 
 ### `freeze` (request)
 
@@ -246,12 +252,19 @@ interpreted as an unsigned 64-bit integer; cast to `float` or
 ```
 
 ```json
-{ "jsonrpc": "2.0", "id": "9", "error": { "code": 5001, "message": "unfreeze RPC disabled until scoped authorization is implemented" } }
+{
+  "jsonrpc": "2.0",
+  "id": "9",
+  "error": {
+    "code": 5001,
+    "message": "unfreeze RPC disabled until scoped authorization is implemented"
+  }
+}
 ```
 
 `unfreeze` over unauthenticated JSON-RPC is denied with `policy_denied`
 until scoped operator authorization exists. Trusted host code stops its own
-worker with `FreezeManager::unfreeze` instead.
+worker with `FreezeManager::unfreeze` directly, or calls `FreezeManager::cancel_all()` on shutdown.
 
 ### `status` (request)
 

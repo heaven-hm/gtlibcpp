@@ -183,6 +183,44 @@ GTLIBCPP_TEST(compare_write_verifies) {
     const auto r = session.compare_write_verify<std::uint32_t>(0x9000, 0xCAFEF00D);
     GTLIBCPP_REQUIRE(r);
     GTLIBCPP_REQUIRE_EQ(session.read<std::uint32_t>(0x9000).value(), 0xCAFEF00Du);
+
+    const auto r_zero = session.compare_write_verify<std::uint32_t>(0x9000, 0x12345678, 0);
+    GTLIBCPP_REQUIRE(!r_zero);
+    GTLIBCPP_REQUIRE_EQ(r_zero.error().code, gtlibcpp::ErrorCode::invalid_size);
+}
+
+class CorruptWriteBackend final : public gtlibcpp::IMemoryBackend {
+public:
+    gtlibcpp::Result<std::vector<std::uint8_t>>
+    read(gtlibcpp::Address address, std::size_t size) override {
+        std::vector<std::uint8_t> bytes(size, 0);
+        for (std::size_t i = 0; i < size; ++i) {
+            auto it = mem_.find(address + i);
+            bytes[i] = (it != mem_.end()) ? it->second : 0;
+        }
+        return gtlibcpp::Result<std::vector<std::uint8_t>>::success(std::move(bytes));
+    }
+    gtlibcpp::Result<std::size_t>
+    write(gtlibcpp::Address address, const std::vector<std::uint8_t>& bytes) override {
+        for (std::size_t i = 0; i < bytes.size(); ++i) {
+            mem_[address + i] = static_cast<std::uint8_t>(bytes[i] ^ 0xFF);
+        }
+        return gtlibcpp::Result<std::size_t>::success(bytes.size());
+    }
+    bool is_alive() noexcept override { return true; }
+    std::string target_id() const override { return "corrupt"; }
+    gtlibcpp::TargetIdentity identity() const override { return id_; }
+private:
+    std::map<gtlibcpp::Address, std::uint8_t> mem_;
+    gtlibcpp::TargetIdentity id_{1, 1, "C:/test.exe", "sha", gtlibcpp::Architecture::x64};
+};
+
+GTLIBCPP_TEST(compare_write_verify_retry_exhaustion_returns_verification_mismatch) {
+    auto backend = std::make_shared<CorruptWriteBackend>();
+    gtlibcpp::MemorySession session(backend);
+    const auto r = session.compare_write_verify<std::uint32_t>(0x9500, 0x11223344, 3);
+    GTLIBCPP_REQUIRE(!r);
+    GTLIBCPP_REQUIRE_EQ(r.error().code, gtlibcpp::ErrorCode::verification_mismatch);
 }
 
 GTLIBCPP_TEST(freeze_restores_original) {
@@ -357,16 +395,15 @@ GTLIBCPP_TEST(hardening_rejects_incorrect_freeze_type_size) {
     GTLIBCPP_REQUIRE(!width_mismatch);
     GTLIBCPP_REQUIRE_EQ(width_mismatch.error().code, gtlibcpp::ErrorCode::invalid_size);
     request.type_name = "nonsense";
-    GTLIBCPP_REQUIRE(!freeze.freeze(request));
+    request.size = 0;
+    auto r_type = freeze.freeze(request);
+    GTLIBCPP_REQUIRE(!r_type);
+    GTLIBCPP_REQUIRE_EQ(r_type.error().code, gtlibcpp::ErrorCode::invalid_type);
+
     request.type_name = "uint32";
+    request.size = 4;
     GTLIBCPP_REQUIRE(freeze.freeze(request));
     GTLIBCPP_REQUIRE(freeze.unfreeze(request.id));
-}
-
-} // namespace
-
-int main() {
-    return GTLIBCPP_RUN_ALL();
 }
 
 GTLIBCPP_TEST(result_error_does_not_require_default_constructible_value) {
@@ -402,4 +439,10 @@ GTLIBCPP_TEST(freeze_id_can_be_reused_after_unfreeze) {
     GTLIBCPP_REQUIRE(freeze.freeze(request));
     GTLIBCPP_REQUIRE(freeze.unfreeze(request.id));
     GTLIBCPP_REQUIRE(freeze.restore(request.id));
+}
+
+} // namespace
+
+int main() {
+    return GTLIBCPP_RUN_ALL();
 }

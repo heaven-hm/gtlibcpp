@@ -11,6 +11,7 @@
  */
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -59,8 +60,7 @@ public:
         user_ = nullptr;
     }
     void set_min_level(LogLevel level) noexcept {
-        std::lock_guard<std::mutex> lock(mutex_);
-        min_level_ = level;
+        min_level_.store(level, std::memory_order_relaxed);
     }
 
     void log(LogLevel level,
@@ -69,11 +69,11 @@ public:
              const std::string& message,
              std::uint64_t address = 0,
              std::size_t bytes = 0) {
+        if (level < min_level_.load(std::memory_order_relaxed)) return;
         Sink sink;
         void* user;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (level < min_level_) return;
             sink = sink_ ? sink_ : &default_sink;
             user = user_;
         }
@@ -136,7 +136,7 @@ private:
     std::mutex mutex_;
     Sink sink_{nullptr};
     void* user_{nullptr};
-    LogLevel min_level_{LogLevel::info};
+    std::atomic<LogLevel> min_level_{LogLevel::info};
 };
 
 } // namespace gtlibcpp

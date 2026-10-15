@@ -164,6 +164,12 @@ public:
                                                  std::uint32_t max_attempts = 1) {
         static_assert(std::is_trivially_copyable_v<T>,
                       "compare_write_verify<T> requires a trivially copyable type");
+        if (max_attempts == 0) {
+            return Result<T>::failure(make_error(
+                ErrorCode::invalid_size,
+                "max_attempts must be greater than 0",
+                "MemorySession::compare_write_verify", address, sizeof(T)));
+        }
         for (std::uint32_t attempt = 0; attempt < max_attempts; ++attempt) {
             const auto written = write<T>(address, value);
             if (!written) {
