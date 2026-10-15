@@ -246,11 +246,12 @@ interpreted as an unsigned 64-bit integer; cast to `float` or
 ```
 
 ```json
-{ "jsonrpc": "2.0", "id": "9", "result": { "unfrozen": true } }
+{ "jsonrpc": "2.0", "id": "9", "error": { "code": 5001, "message": "unfreeze RPC disabled until scoped authorization is implemented" } }
 ```
 
-`unfreeze` stops the worker without restoring the original value.
-Use `restore` to put the original value back.
+`unfreeze` over unauthenticated JSON-RPC is denied with `policy_denied`
+until scoped operator authorization exists. Trusted host code stops its own
+worker with `FreezeManager::unfreeze` instead.
 
 ### `status` (request)
 

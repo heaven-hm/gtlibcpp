@@ -69,14 +69,6 @@ public:
              const std::string& message,
              std::uint64_t address = 0,
              std::size_t bytes = 0) {
-        LogEvent ev{};
-        ev.level = level;
-        ev.operation = operation;
-        ev.code = code;
-        ev.message = message;
-        ev.address = address;
-        ev.bytes = bytes;
-        ev.timestamp_ms = now_ms();
         Sink sink;
         void* user;
         {
@@ -85,6 +77,14 @@ public:
             sink = sink_ ? sink_ : &default_sink;
             user = user_;
         }
+        LogEvent ev{};
+        ev.level = level;
+        ev.operation = operation;
+        ev.code = code;
+        ev.message = message;
+        ev.address = address;
+        ev.bytes = bytes;
+        ev.timestamp_ms = now_ms();
         try {
             sink(ev, user);
         } catch (...) {

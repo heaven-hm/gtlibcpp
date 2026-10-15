@@ -49,7 +49,7 @@ Header: [`include/gtlibcpp/memory_session.hpp`](include/gtlibcpp/memory_session.
 | `write_offsets<T>(Address base, const std::vector<Address>& offsets, const T& val)` | `Result<BatchResult>` | Writes typed values across offsets, stopping at the first error and reporting partial completion; earlier writes are not rolled back. |
 | `read_string(Address address, std::size_t capacity, bool require_nul = true)` | `Result<BoundedString>` | Reads a bounded string safely validating UTF-8 and capacity. |
 | `write_string(Address address, const BoundedString& str, std::size_t capacity)` | `Result<std::size_t>` | Writes a BoundedString with null-terminator into target memory. |
-| `compare_write_verify<T>(Address address, const T& value, std::uint32_t max_attempts = 1)` | `Result<T>` | Writes a value, reads it back, and retries if verification mismatches; not an atomic compare-and-swap. |
+| `compare_write_verify<T>(Address address, const T& value, std::uint32_t max_attempts = 1)` | `Result<T>` | Writes a value, reads it back, and retries while verification mismatches, bounded by `max_attempts` (default: one attempt, no retry). Returns the requested value on match; exhausting the budget on mismatch returns `verification_mismatch`. Not an atomic compare-and-swap. |
 
 ### 2. Freeze & Worker Management (`gtlibcpp::FreezeManager`)
 Header: [`include/gtlibcpp/freeze.hpp`](include/gtlibcpp/freeze.hpp)
