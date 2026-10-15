@@ -15,6 +15,7 @@
 #include "gtlibcpp/freeze.hpp"
 #include "gtlibcpp/memory_session.hpp"
 #include "gtlibcpp/aob_scan.hpp"
+#include "gtlibcpp/candidate_scan.hpp"
 #include "gtlibcpp/policy.hpp"
 #include "gtlibcpp_test.hpp"
 
@@ -369,6 +370,36 @@ GTLIBCPP_TEST(aob_parser_accepts_wildcards_and_rejects_malformed_patterns) {
     GTLIBCPP_REQUIRE_FALSE(gtlibcpp::parse_aob("", pattern));
 }
 
+GTLIBCPP_TEST(candidate_refine_filters_changed_and_decreased_values) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    const std::uint32_t first = 70, second = 200;
+    backend->put(0x1000, &first, sizeof(first));
+    backend->put(0x2000, &second, sizeof(second));
+    gtlibcpp::MemorySession session(backend);
+    const std::vector<gtlibcpp::Address> candidates{0x1000, 0x2000};
+    const std::vector<std::uint32_t> previous{100, 200};
+    auto changed = gtlibcpp::refine_candidates<std::uint32_t>(
+        session, candidates, previous, gtlibcpp::CandidateComparison::changed);
+    GTLIBCPP_REQUIRE(changed);
+    GTLIBCPP_REQUIRE_EQ(changed.value().size(), 1u);
+    GTLIBCPP_REQUIRE_EQ(changed.value()[0], 0x1000u);
+    auto decreased = gtlibcpp::refine_candidates<std::uint32_t>(
+        session, candidates, previous, gtlibcpp::CandidateComparison::decreased);
+    GTLIBCPP_REQUIRE(decreased);
+    GTLIBCPP_REQUIRE_EQ(decreased.value().size(), 1u);
+}
+
+GTLIBCPP_TEST(candidate_refine_rejects_mismatched_and_overflowing_inputs) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    gtlibcpp::MemorySession session(backend);
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::refine_candidates<std::uint32_t>(
+        session, {0x1000, 0x2000}, {1}, gtlibcpp::CandidateComparison::changed));
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::refine_candidates<std::uint32_t>(
+        session, {0x1000}, {1}, gtlibcpp::CandidateComparison::changed, 0, 0));
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::refine_candidates<std::uint32_t>(
+        session, {(std::numeric_limits<gtlibcpp::Address>::max)()}, {1},
+        gtlibcpp::CandidateComparison::changed));
+}
 } // namespace
 
 int main() {
