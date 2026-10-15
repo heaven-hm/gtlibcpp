@@ -258,7 +258,7 @@ interpreted as an unsigned 64-bit integer; cast to `float` or
   "id": "9",
   "error": {
     "code": 5001,
-    "message": "unfreeze RPC disabled until scoped authorization is implemented", "data": "policy_denied",
+    "message": "unfreeze RPC disabled until scoped authorization is implemented",
     "data": "policy_denied"
   }
 }
