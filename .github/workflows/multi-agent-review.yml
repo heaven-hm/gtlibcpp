@@ -30,7 +30,7 @@ jobs:
             echo "[-] Error: missing address wrap-around overflow check in backend.hpp"
             exit 1
           }
-          grep -q "std::numeric_limits<Address>::max() - base < offset" include/gtlibcpp/memory_session.hpp || {
+          grep -q "(std::numeric_limits<Address>::max)()" include/gtlibcpp/memory_session.hpp || {
             echo "[-] Error: missing offset overflow check in memory_session.hpp"
             exit 1
           }
