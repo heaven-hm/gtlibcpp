@@ -197,7 +197,7 @@ public:
         static_assert(std::is_trivially_copyable_v<T>,
                       "write_offsets<T> requires a trivially copyable type");
         std::vector<Address> completed;
-        std::vector<Address> attempted = offsets;
+        std::vector<Address> attempted;
         for (const auto offset : offsets) {
             const auto written = write<T>(base + offset, value);
             attempted.push_back(base + offset);
@@ -391,7 +391,7 @@ MemorySession::resolve_pointer_chain(Address base, const std::vector<Address>& o
 inline Result<BatchResult>
 MemorySession::read_offsets(Address base, const std::vector<Address>& offsets, std::size_t size) {
     std::vector<Address> completed;
-    std::vector<Address> attempted = offsets;
+    std::vector<Address> attempted;
     for (const auto offset : offsets) {
         const Address target = base + offset;
         const auto r = read_bytes(target, size);
