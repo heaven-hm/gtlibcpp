@@ -5,6 +5,7 @@
 #include <cstring>
 #include <iostream>
 #include <map>
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
@@ -326,6 +327,35 @@ GTLIBCPP_TEST(freeze_interval_honours_short_values) {
     GTLIBCPP_REQUIRE(s);
     GTLIBCPP_REQUIRE(s.value().successful_rewrites >= 1u);
     freeze.cancel_all();
+}
+
+GTLIBCPP_TEST(aob_finds_boundary_matches_without_duplicates) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    constexpr gtlibcpp::Address base = 0x100000;
+    std::vector<std::uint8_t> buffer((64u << 10) + 16, 0);
+    // Match starts before the 64 KiB chunk boundary and crosses it.
+    buffer[(64u << 10) - 2] = 0x48;
+    buffer[(64u << 10) - 1] = 0x8B;
+    buffer[(64u << 10)] = 0x7F;
+    buffer[(64u << 10) + 1] = 0x05;
+    backend->put(base, buffer.data(), buffer.size());
+    gtlibcpp::MemorySession session(backend);
+    auto result = gtlibcpp::scan_aob(session, base, buffer.size(), "48 8B ?? 05");
+    GTLIBCPP_REQUIRE(result);
+    GTLIBCPP_REQUIRE_EQ(result.value().size(), 1u);
+    GTLIBCPP_REQUIRE_EQ(result.value()[0], base + (64u << 10) - 2);
+}
+
+GTLIBCPP_TEST(aob_fails_closed_for_bad_bounds_and_read_errors) {
+    auto backend = std::make_shared<FakeMemoryBackend>();
+    gtlibcpp::MemorySession session(backend);
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::scan_aob(session, 0x1000, 0, "AA"));
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::scan_aob(session,
+        (std::numeric_limits<gtlibcpp::Address>::max)() - 1, 4, "AA"));
+    GTLIBCPP_REQUIRE_FALSE(gtlibcpp::scan_aob(session, 0x1000, 32, "AA", 0));
+    const auto missing = gtlibcpp::scan_aob(session, 0x1000, 32, "AA");
+    GTLIBCPP_REQUIRE_FALSE(missing);
+    GTLIBCPP_REQUIRE_EQ(missing.error().code, gtlibcpp::ErrorCode::read_failed);
 }
 
 GTLIBCPP_TEST(aob_parser_accepts_wildcards_and_rejects_malformed_patterns) {
