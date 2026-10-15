@@ -146,7 +146,7 @@ private:
     static std::string query_image_sha256(const std::string& image_path) {
         if (image_path.empty()) return {};
         HANDLE file = ::CreateFileA(
-            image_path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+            image_path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file == INVALID_HANDLE_VALUE) return {};
         BCRYPT_ALG_HANDLE alg = nullptr;
