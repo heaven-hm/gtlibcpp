@@ -24,4 +24,6 @@ struct DarwinBackendOptions {
 
 [[nodiscard]] std::string get_darwin_process_path(std::uint32_t pid);
 
+[[nodiscard]] Address get_darwin_module_base(std::uint32_t pid, const std::string& module_name = "");
+
 } // namespace gtlibcpp

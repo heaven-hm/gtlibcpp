@@ -140,6 +140,50 @@ std::string get_darwin_process_path(std::uint32_t pid) {
     return {};
 }
 
+Address get_darwin_module_base(std::uint32_t pid, const std::string& module_name) {
+    if (pid == 0) return 0;
+
+    mach_port_t task_port = MACH_PORT_NULL;
+    kern_return_t kr = task_for_pid(mach_task_self(), static_cast<int>(pid), &task_port);
+    if (kr != KERN_SUCCESS || task_port == MACH_PORT_NULL) {
+        return 0;
+    }
+
+    std::string target_name = module_name;
+    if (target_name.empty()) {
+        const auto p = get_darwin_process_path(pid);
+        const auto slash = p.find_last_of('/');
+        target_name = (slash != std::string::npos) ? p.substr(slash + 1) : p;
+    }
+
+    mach_vm_address_t addr = 0x1000;
+    Address found_base = 0;
+
+    while (addr < 0x7fffffffffffULL) {
+        mach_vm_size_t size = 0;
+        vm_region_basic_info_data_64_t info{};
+        mach_msg_type_number_t info_count = VM_REGION_BASIC_INFO_COUNT_64;
+        mach_port_t object_name = MACH_PORT_NULL;
+        kr = mach_vm_region(task_port, &addr, &size, VM_REGION_BASIC_INFO_64,
+                            reinterpret_cast<vm_region_info_t>(&info), &info_count, &object_name);
+        if (kr != KERN_SUCCESS) break;
+
+        char path_buffer[PROC_PIDPATHINFO_MAXSIZE] = {0};
+        int path_len = proc_regionfilename(static_cast<int>(pid), addr, path_buffer, sizeof(path_buffer));
+        if (path_len > 0) {
+            std::string reg_path(path_buffer);
+            if (reg_path.find(target_name) != std::string::npos) {
+                found_base = static_cast<Address>(addr);
+                break;
+            }
+        }
+        addr += size;
+    }
+
+    mach_port_deallocate(mach_task_self(), task_port);
+    return found_base;
+}
+
 } // namespace gtlibcpp
 #else
 namespace gtlibcpp {
@@ -154,6 +198,10 @@ std::uint32_t find_darwin_process(const std::vector<std::string>&) {
 
 std::string get_darwin_process_path(std::uint32_t) {
     return {};
+}
+
+Address get_darwin_module_base(std::uint32_t, const std::string&) {
+    return 0;
 }
 
 } // namespace gtlibcpp

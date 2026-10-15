@@ -419,44 +419,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    // 3. Initialize Memory Backend & Session
-    std::shared_ptr<gtlibcpp::IMemoryBackend> backend;
-#if defined(_WIN32)
-    const auto pid = gtlibcpp::find_game_process("ac_client");
-    if (pid != 0) {
-        const auto path = gtlibcpp::get_process_image_path(pid);
-        gtlibcpp::WindowsBackendOptions opts{};
-        opts.pid = pid;
-        opts.image_path = path;
-        opts.architecture = gtlibcpp::Architecture::x86;
-        opts.read_only = false;
-        backend = gtlibcpp::make_windows_backend(opts);
-        if (backend) {
-            std::cout << "[+] Attached to live target process: PID " << pid << " (" << path << ")\n";
-        }
-    }
-#elif defined(__APPLE__)
-    const auto pid = gtlibcpp::find_darwin_process({"assaultcube", "ac_client"});
-    if (pid != 0) {
-        const auto path = gtlibcpp::get_darwin_process_path(pid);
-        std::cout << "[+] Detected running game process: PID " << pid << " (" << path << ")\n";
-        gtlibcpp::DarwinBackendOptions opts{};
-        opts.pid = pid;
-        opts.image_path = path;
-        opts.architecture = gtlibcpp::Architecture::x64;
-        opts.read_only = false;
-        backend = gtlibcpp::make_darwin_backend(opts);
-        if (backend) {
-            std::cout << "[+] Successfully attached to live macOS target process via Mach task port!\n";
-        } else {
-            std::cout << "[!] Notice: Process PID " << pid << " could not be attached directly.\n"
-                      << "    Kernel Mach error: Exclusive debugger lock (e.g. Cheat Engine debugserver)\n"
-                      << "    is active, or process requires debugger entitlements. Operating in simulated offline mode.\n";
-        }
-    }
-#endif
-
-    // Identify target entries: Health, Weapon Ammo, ZCord
+    // 2. Identify target entries: Health, Weapon Ammo, ZCord
     const gtlibcpp::CheatEntry* health_entry = nullptr;
     const gtlibcpp::CheatEntry* ammo_entry = nullptr;
     const gtlibcpp::CheatEntry* zcord_entry = nullptr;
@@ -476,6 +439,51 @@ int main(int argc, char* argv[]) {
     const bool is_mac_target = (table_path.find("mac") != std::string::npos) ||
         (health_entry && health_entry->section == "assaultcube");
 
+    // 3. Initialize Memory Backend & Session
+    std::shared_ptr<gtlibcpp::IMemoryBackend> backend;
+    gtlibcpp::Address live_mac_base = 0;
+#if defined(_WIN32)
+    const auto pid = gtlibcpp::find_game_process("ac_client");
+    if (pid != 0) {
+        const auto path = gtlibcpp::get_process_image_path(pid);
+        gtlibcpp::WindowsBackendOptions opts{};
+        opts.pid = pid;
+        opts.image_path = path;
+        opts.architecture = gtlibcpp::Architecture::x86;
+        opts.read_only = false;
+        backend = gtlibcpp::make_windows_backend(opts);
+        if (backend) {
+            std::cout << "[+] Attached to live target process: PID " << pid << " (" << path << ")\n";
+        }
+    }
+#elif defined(__APPLE__)
+    if (is_mac_target) {
+        const auto pid = gtlibcpp::find_darwin_process({"assaultcube", "ac_client"});
+        if (pid != 0) {
+            const auto path = gtlibcpp::get_darwin_process_path(pid);
+            std::cout << "[+] Detected running game process: PID " << pid << " (" << path << ")\n";
+            gtlibcpp::DarwinBackendOptions opts{};
+            opts.pid = pid;
+            opts.image_path = path;
+            opts.architecture = gtlibcpp::Architecture::x64;
+            opts.read_only = false;
+            backend = gtlibcpp::make_darwin_backend(opts);
+            if (backend) {
+                std::cout << "[+] Successfully attached to live macOS target process via Mach task port!\n";
+                live_mac_base = gtlibcpp::get_darwin_module_base(pid, "assaultcube");
+                if (live_mac_base != 0) {
+                    std::cout << "[+] Discovered live ASLR module base for assaultcube: 0x"
+                              << std::hex << live_mac_base << std::dec << "\n";
+                }
+            } else {
+                std::cout << "[!] Notice: Process PID " << pid << " could not be attached directly.\n"
+                          << "    Kernel Mach error: Exclusive debugger lock (e.g. Cheat Engine debugserver)\n"
+                          << "    is active, or process requires debugger entitlements. Operating in simulated offline mode.\n";
+            }
+        }
+    }
+#endif
+
     if (!backend) {
         backend = std::make_shared<SimulatedGameBackend>(is_mac_target);
         std::cout << "[*] Operating on high-fidelity simulated AssaultCube memory space ("
@@ -486,18 +494,19 @@ int main(int argc, char* argv[]) {
     auto freeze = std::make_shared<gtlibcpp::FreezeManager>(session);
 
     // Resolve pointers
-    const gtlibcpp::Address default_mod_base = is_mac_target ? 0x100000000ULL : 0x400000ULL;
+    const gtlibcpp::Address default_mod_base = (live_mac_base != 0) ? live_mac_base : (is_mac_target ? 0x100000000ULL : 0x400000ULL);
 
     auto compute_entry_base = [&](const gtlibcpp::CheatEntry* entry, gtlibcpp::Address fallback_off) -> gtlibcpp::Address {
         if (!entry) return default_mod_base + fallback_off;
         if (!entry->section.empty()) {
             if (entry->section == "assaultcube") {
-                return 0x100000000ULL + entry->address;
+                const auto base = (live_mac_base != 0) ? live_mac_base : 0x100000000ULL;
+                return base + entry->address;
             } else if (entry->section == "ac_client.exe") {
                 return 0x400000ULL + entry->address;
             }
         }
-        if (entry->address >= 0x100000000ULL) {
+        if (entry->address >= 0x100000000ULL && live_mac_base == 0) {
             return entry->address;
         }
         return default_mod_base + entry->address;
@@ -515,15 +524,29 @@ int main(int argc, char* argv[]) {
     auto resolved_ammo = resolve_pointer_chain(*session, ammo_base, ammo_entry && !ammo_entry->offsets.empty() ? ammo_entry->offsets : default_ammo_offsets, is_mac_target);
     auto resolved_zcord = resolve_pointer_chain(*session, zcord_base, zcord_entry && !zcord_entry->offsets.empty() ? zcord_entry->offsets : default_zcord_offsets, is_mac_target);
 
-    if (!resolved_health || !resolved_ammo || !resolved_zcord) {
+    bool resolution_valid = false;
+    if (resolved_health && resolved_ammo && resolved_zcord) {
+        auto probe_h = session->read<std::uint32_t>(resolved_health.value());
+        auto probe_a = session->read<std::uint32_t>(resolved_ammo.value());
+        auto probe_z = session->read<float>(resolved_zcord.value());
+        if (probe_h && probe_a && probe_z) {
+            resolution_valid = true;
+        }
+    }
+
+    if (!resolution_valid) {
         std::cout << "[!] Pointer resolution on live target returned unmapped coordinates (e.g. at main menu or different architecture).\n"
                   << "    Switching session to simulated game space to preserve trainer functionality.\n";
         backend = std::make_shared<SimulatedGameBackend>(is_mac_target);
         session = std::make_shared<gtlibcpp::MemorySession>(backend);
         freeze = std::make_shared<gtlibcpp::FreezeManager>(session);
-        resolved_health = resolve_pointer_chain(*session, health_base, health_entry && !health_entry->offsets.empty() ? health_entry->offsets : default_health_offsets, is_mac_target);
-        resolved_ammo = resolve_pointer_chain(*session, ammo_base, ammo_entry && !ammo_entry->offsets.empty() ? ammo_entry->offsets : default_ammo_offsets, is_mac_target);
-        resolved_zcord = resolve_pointer_chain(*session, zcord_base, zcord_entry && !zcord_entry->offsets.empty() ? zcord_entry->offsets : default_zcord_offsets, is_mac_target);
+        const gtlibcpp::Address sim_base = is_mac_target ? 0x100000000ULL : 0x400000ULL;
+        const gtlibcpp::Address sim_health_base = is_mac_target ? (sim_base + (health_entry ? health_entry->address : 0x1CBD38ULL)) : (sim_base + (health_entry ? health_entry->address : 0x17E0A8ULL));
+        const gtlibcpp::Address sim_ammo_base = is_mac_target ? (sim_base + (ammo_entry ? ammo_entry->address : 0x1CBD38ULL)) : (sim_base + (ammo_entry ? ammo_entry->address : 0x17E0A8ULL));
+        const gtlibcpp::Address sim_zcord_base = is_mac_target ? (sim_base + (zcord_entry ? zcord_entry->address : 0x1CBD38ULL)) : (sim_base + (zcord_entry ? zcord_entry->address : 0x17E0A8ULL));
+        resolved_health = resolve_pointer_chain(*session, sim_health_base, health_entry && !health_entry->offsets.empty() ? health_entry->offsets : default_health_offsets, is_mac_target);
+        resolved_ammo = resolve_pointer_chain(*session, sim_ammo_base, ammo_entry && !ammo_entry->offsets.empty() ? ammo_entry->offsets : default_ammo_offsets, is_mac_target);
+        resolved_zcord = resolve_pointer_chain(*session, sim_zcord_base, zcord_entry && !zcord_entry->offsets.empty() ? zcord_entry->offsets : default_zcord_offsets, is_mac_target);
     }
 
     if (!resolved_health || !resolved_ammo || !resolved_zcord) {
