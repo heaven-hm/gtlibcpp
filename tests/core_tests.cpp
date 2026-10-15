@@ -340,6 +340,8 @@ GTLIBCPP_TEST(batch_write_rejects_address_wraparound) {
     GTLIBCPP_REQUIRE_EQ(batch.value().completed_addresses.size(), 1u);
     GTLIBCPP_REQUIRE(batch.value().failure.has_value());
     GTLIBCPP_REQUIRE_EQ(batch.value().failure->code, gtlibcpp::ErrorCode::invalid_address);
+    GTLIBCPP_REQUIRE(batch.value().rejected_offset.has_value());
+    GTLIBCPP_REQUIRE_EQ(*batch.value().rejected_offset, (std::numeric_limits<gtlibcpp::Address>::max)());
     GTLIBCPP_REQUIRE_EQ(backend->memory.count(0x0FFF), 0u);
     GTLIBCPP_REQUIRE_EQ(session.read<std::uint32_t>(base).value(), 123u);
 }
@@ -358,6 +360,8 @@ GTLIBCPP_TEST(batch_read_rejects_address_wraparound) {
     GTLIBCPP_REQUIRE_EQ(batch.value().completed_addresses.size(), 1u);
     GTLIBCPP_REQUIRE(batch.value().failure.has_value());
     GTLIBCPP_REQUIRE_EQ(batch.value().failure->code, gtlibcpp::ErrorCode::invalid_address);
+    GTLIBCPP_REQUIRE(batch.value().rejected_offset.has_value());
+    GTLIBCPP_REQUIRE_EQ(*batch.value().rejected_offset, (std::numeric_limits<gtlibcpp::Address>::max)());
 }
 
 } // namespace
