@@ -14,6 +14,7 @@ C++17 memory operations and a local JSON-RPC agent service for **authorized offl
 | `CheatTableParser` | Strict, limited Cheat Engine `.CT` parsing |
 | `AgentService` | Local JSON-RPC 2.0 transport |
 | `gtctl` | Read-only CLI version and health checks |
+| `gt_trainer_cli` | Interactive CLI trainer with cheat table parsing, hotkey detection & memory freezing |
 
 The cross-platform core builds on major desktop platforms; the real process backend and named-pipe service are Windows-specific. No general-purpose memory value scanner is exposed by the core API.
 
@@ -51,6 +52,21 @@ int main() {
 ```
 
 For scanning and rescanning examples, see [game-memory guide](docs/GAME_MEMORY_GUIDE.md). For write/restore, freeze, agent authorization and CMake consumers, see [examples](docs/EXAMPLES.md).
+
+## CLI Trainer (`gt_trainer_cli`)
+
+A full command-line game trainer utility leveraging `CheatTableParser`, `MemorySession`, and `FreezeManager`:
+
+```bash
+# List cheats and hotkey combinations from a Cheat Engine table
+./build/gt_trainer_cli --list --table demos/CheatTable/assaultcube.ct
+
+# Run automated hotkey detection and memory verification test
+./build/gt_trainer_cli --test demos/CheatTable/assaultcube.ct
+
+# Run interactive trainer (supports keyboard hotkeys: [H] Health, [A] Unlimited Ammo, [Z] High Jump)
+./build/gt_trainer_cli --table demos/CheatTable/assaultcube.ct
+```
 
 ## Screenshots
 

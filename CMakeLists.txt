@@ -66,6 +66,18 @@ if(GTLIBCPP_BUILD_TESTS)
     add_test(NAME gtctl_health COMMAND gtctl --health)
 endif()
 
+# CLI application using gtlibcpp for Cheat Table parsing, hotkey detection, and safe execution
+add_executable(gt_trainer_cli tools/gt_trainer_cli.cpp)
+target_link_libraries(gt_trainer_cli PRIVATE gtlibcpp::core)
+target_compile_definitions(gt_trainer_cli PRIVATE GTLIBCPP_VERSION="${PROJECT_VERSION}")
+if(WIN32)
+    target_link_libraries(gt_trainer_cli PRIVATE gtlibcpp::win32)
+endif()
+install(TARGETS gt_trainer_cli RUNTIME DESTINATION bin)
+if(GTLIBCPP_BUILD_TESTS)
+    add_test(NAME gt_trainer_cli_test COMMAND gt_trainer_cli --test ${CMAKE_CURRENT_SOURCE_DIR}/demos/CheatTable/assaultcube.ct)
+endif()
+
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
@@ -116,6 +128,7 @@ if(GTLIBCPP_BUILD_TESTS)
 
     add_executable(gtlibcpp_parser_tests tests/parser_tests.cpp)
     target_link_libraries(gtlibcpp_parser_tests PRIVATE gtlibcpp::core)
+    target_compile_definitions(gtlibcpp_parser_tests PRIVATE GTLIBCPP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME gtlibcpp_parser_tests COMMAND gtlibcpp_parser_tests)
 
     add_executable(gtlibcpp_agent_tests tests/agent_tests.cpp)

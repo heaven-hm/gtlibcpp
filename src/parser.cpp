@@ -648,6 +648,22 @@ Result<CheatTable> CheatTableParser::parse_string(const std::string& xml) const 
                             entry.hotkeys.push_back(static_cast<int>(v));
                         }
                     }
+                    if (const auto* keys_node = find_child(hk, "Keys")) {
+                        for (const auto& k : keys_node->children) {
+                            if (k.name == "Key") {
+                                std::int64_t v = 0;
+                                if (parse_int64(k.text, v)) {
+                                    entry.hotkeys.push_back(static_cast<int>(v));
+                                }
+                            }
+                        }
+                    }
+                    if (const auto* key_node = find_child(hk, "Key")) {
+                        std::int64_t v = 0;
+                        if (parse_int64(key_node->text, v)) {
+                            entry.hotkeys.push_back(static_cast<int>(v));
+                        }
+                    }
                     if (auto act = hk.attrs.find("Action");
                         act != hk.attrs.end()) {
                         entry.hotkey_action = act->second;

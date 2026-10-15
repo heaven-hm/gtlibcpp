@@ -238,12 +238,65 @@ GTLIBCPP_TEST(hex_and_signed_values_preserved) {
     GTLIBCPP_REQUIRE_EQ(e.offsets[1], 0x20u);
 }
 
+GTLIBCPP_TEST(parses_keys_elements_for_hotkeys) {
+    CheatTableParser parser;
+    const std::string xml = R"(<?xml version="1.0"?>
+<CheatTable>
+  <CheatEntries>
+    <CheatEntry>
+      <ID>1</ID>
+      <Description>Health</Description>
+      <Variable>
+        <Type>4 Bytes</Type>
+        <Address>0x1000</Address>
+      </Variable>
+      <Hotkeys>
+        <Hotkey>
+          <Action>Set Value</Action>
+          <Keys>
+            <Key>17</Key>
+            <Key>72</Key>
+          </Keys>
+          <Value>100</Value>
+        </Hotkey>
+      </Hotkeys>
+    </CheatEntry>
+  </CheatEntries>
+</CheatTable>)";
+    auto r = parser.parse_string(xml);
+    GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE_EQ(r.value().entries.size(), 1u);
+    const auto& e = r.value().entries[0];
+    GTLIBCPP_REQUIRE_EQ(e.hotkeys.size(), 2u);
+    GTLIBCPP_REQUIRE_EQ(e.hotkeys[0], 17);
+    GTLIBCPP_REQUIRE_EQ(e.hotkeys[1], 72);
+}
+
+static std::string find_fixture(const std::string& rel) {
+    std::vector<std::string> candidates = {
+        rel,
+        "../" + rel,
+        "demos/" + rel,
+        "../demos/" + rel
+    };
+#ifdef GTLIBCPP_SOURCE_DIR
+    candidates.push_back(std::string(GTLIBCPP_SOURCE_DIR) + "/" + rel);
+    candidates.push_back(std::string(GTLIBCPP_SOURCE_DIR) + "/demos/" + rel);
+#endif
+    for (const auto& c : candidates) {
+        std::ifstream f(c);
+        if (f.good()) return c;
+    }
+    return {};
+}
+
 GTLIBCPP_TEST(igi_fixture_parses) {
-    std::ifstream f("CheatTable/IGI.CT");
-    if (!f) {
-        std::printf("  (skipped: CheatTable/IGI.CT not present)\n");
+    auto path = find_fixture("CheatTable/IGI.CT");
+    if (path.empty()) {
+        std::printf("  (skipped: IGI.CT not found)\n");
         return;
     }
+    std::ifstream f(path);
     std::ostringstream ss;
     ss << f.rdbuf();
     CheatTableParser parser;
@@ -254,16 +307,18 @@ GTLIBCPP_TEST(igi_fixture_parses) {
 }
 
 GTLIBCPP_TEST(assaultcube_fixture_parses) {
-    std::ifstream f("CheatTable/assaultcube.ct");
-    if (!f) {
-        std::printf("  (skipped: CheatTable/assaultcube.ct not present)\n");
+    auto path = find_fixture("CheatTable/assaultcube.ct");
+    if (path.empty()) {
+        std::printf("  (skipped: assaultcube.ct not found)\n");
         return;
     }
+    std::ifstream f(path);
     std::ostringstream ss;
     ss << f.rdbuf();
     CheatTableParser parser;
     auto r = parser.parse_string(ss.str());
     GTLIBCPP_REQUIRE(r);
+    GTLIBCPP_REQUIRE(!r.value().entries.empty());
 }
 
 int main() {
